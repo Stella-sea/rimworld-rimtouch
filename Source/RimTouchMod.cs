@@ -34,53 +34,53 @@ namespace RimTouch
             Listing_Standard listing = new Listing_Standard();
             listing.Begin(viewRect);
 
-            listing.CheckboxLabeled("Enable touch mode", ref Settings.enableTouchMode, "Enables RimTouch direct touch gestures and UI tap repair.");
-            listing.Label("Input: " + TouchSource.Status);
-            listing.CheckboxLabeled("Two-finger globe twist", ref Settings.enableGlobeTwist, "Turn two fingers to roll the world view. A deliberate twist releases the world's north-up lock. Use North-up in the world view to straighten it again.");
-            listing.CheckboxLabeled("Allow extra UI scales (advanced)", ref Settings.allowExtraUiScales, "Opt in to scales outside the game's normal resolution checks. Turn this off to restore the native scale choices.");
-            if (!RimTouchBootstrap.UiScaleHookReady) listing.Label("Extra scales are unavailable on this game build; native scale limits apply.");
-            if (listing.ButtonText("Reset UI scale to 1.0x"))
+            listing.CheckboxLabeled("RimTouch.EnableTouchMode".Translate(), ref Settings.enableTouchMode, "RimTouch.EnableTouchModeDesc".Translate());
+            listing.Label("RimTouch.Input".Translate() + TouchSource.Status);
+            listing.CheckboxLabeled("RimTouch.EnableGlobeTwist".Translate(), ref Settings.enableGlobeTwist, "RimTouch.EnableGlobeTwistDesc".Translate());
+            listing.CheckboxLabeled("RimTouch.AllowExtraUiScales".Translate(), ref Settings.allowExtraUiScales, "RimTouch.AllowExtraUiScalesDesc".Translate());
+            if (!RimTouchBootstrap.UiScaleHookReady) listing.Label("RimTouch.ExtraScalesUnavailable".Translate());
+            if (listing.ButtonText("RimTouch.ResetUiScale".Translate()))
             {
                 Settings.allowExtraUiScales = false;
                 Prefs.UIScale = 1f;
             }
             listing.GapLine();
 
-            listing.Label("Pan inertia strength: " + Settings.panInertiaStrength.ToString("0.00"));
+            listing.Label("RimTouch.PanInertiaStrength".Translate() + Settings.panInertiaStrength.ToString("0.00"));
             Settings.panInertiaStrength = listing.Slider(Settings.panInertiaStrength, 0f, 2f);
 
-            listing.Label("Pan inertia damping: " + Settings.panInertiaDamping.ToString("0.00"));
+            listing.Label("RimTouch.PanInertiaDamping".Translate() + Settings.panInertiaDamping.ToString("0.00"));
             Settings.panInertiaDamping = listing.Slider(Settings.panInertiaDamping, 1f, 10f);
 
-            listing.Label("Zoom inertia strength: " + Settings.zoomInertiaStrength.ToString("0.00"));
+            listing.Label("RimTouch.ZoomInertiaStrength".Translate() + Settings.zoomInertiaStrength.ToString("0.00"));
             Settings.zoomInertiaStrength = listing.Slider(Settings.zoomInertiaStrength, 0f, 2f);
 
-            listing.Label("Zoom inertia damping: " + Settings.zoomInertiaDamping.ToString("0.00"));
+            listing.Label("RimTouch.ZoomInertiaDamping".Translate() + Settings.zoomInertiaDamping.ToString("0.00"));
             Settings.zoomInertiaDamping = listing.Slider(Settings.zoomInertiaDamping, 1f, 10f);
 
             listing.Gap();
-            if (listing.ButtonText("Reset touch tuning"))
+            if (listing.ButtonText("RimTouch.ResetTouchTuning".Translate()))
             {
                 Settings.ResetTouchTuning();
             }
 
             listing.GapLine();
-            listing.Label("Extended zoom range. Disabling restores prior bounds if this mod still owns them.");
+            listing.Label("RimTouch.ExtendedZoomRangeNote".Translate());
             bool extendedZoomEnabledBefore = Settings.extendedZoomEnabled;
-            listing.CheckboxLabeled("Enable extended zoom range", ref Settings.extendedZoomEnabled, "Lets you zoom in closer and out further than vanilla allows.");
+            listing.CheckboxLabeled("RimTouch.EnableExtendedZoomRange".Translate(), ref Settings.extendedZoomEnabled, "RimTouch.EnableExtendedZoomRangeDesc".Translate());
 
-            listing.Label("Zoom in (min size, lower = closer): " + Settings.extendedZoomInMin.ToString("0.0"));
+            listing.Label("RimTouch.ZoomInMin".Translate() + Settings.extendedZoomInMin.ToString("0.0"));
             Settings.extendedZoomInMin = listing.Slider(Settings.extendedZoomInMin, 0.5f, 11f);
 
-            listing.Label("Zoom out (max size, higher = further): " + Settings.extendedZoomOutMax.ToString("0"));
+            listing.Label("RimTouch.ZoomOutMax".Translate() + Settings.extendedZoomOutMax.ToString("0"));
             Settings.extendedZoomOutMax = listing.Slider(Settings.extendedZoomOutMax, 60f, 300f);
 
             listing.Gap();
-            if (listing.ButtonText("Apply zoom range now"))
+            if (listing.ButtonText("RimTouch.ApplyZoomRangeNow".Translate()))
             {
                 ApplyExtendedZoomRange();
             }
-            if (listing.ButtonText("Reset zoom range to default"))
+            if (listing.ButtonText("RimTouch.ResetZoomRange".Translate()))
             {
                 Settings.ResetZoomRange();
                 ApplyExtendedZoomRange();

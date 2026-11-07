@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+  <RimTouch.EnableTouchMode>Enable touch mode</RimTouch.EnableTouchMode>
+  <RimTouch.EnableTouchModeDesc>Enables RimTouch direct touch gestures and UI tap repair.</RimTouch.EnableTouchModeDesc>
+  <RimTouch.Input>Input: </RimTouch.Input>
+  <RimTouch.EnableGlobeTwist>Two-finger globe twist</RimTouch.EnableGlobeTwist>
+  <RimTouch.EnableGlobeTwistDesc>Turn two fingers to roll the world view. A deliberate twist releases the world's north-up lock. Use North-up in the world view to straighten it again.</RimTouch.EnableGlobeTwistDesc>
+  <RimTouch.AllowExtraUiScales>Allow extra UI scales (advanced)</RimTouch.AllowExtraUiScales>
+  <RimTouch.AllowExtraUiScalesDesc>Opt in to scales outside the game's normal resolution checks. Turn this off to restore the native scale choices.</RimTouch.AllowExtraUiScalesDesc>
+  <RimTouch.ExtraScalesUnavailable>Extra scales are unavailable on this game build; native scale limits apply.</RimTouch.ExtraScalesUnavailable>
+  <RimTouch.ResetUiScale>Reset UI scale to 1.0x</RimTouch.ResetUiScale>
+  <RimTouch.PanInertiaStrength>Pan inertia strength: </RimTouch.PanInertiaStrength>
+  <RimTouch.PanInertiaDamping>Pan inertia damping: </RimTouch.PanInertiaDamping>
+  <RimTouch.ZoomInertiaStrength>Zoom inertia strength: </RimTouch.ZoomInertiaStrength>
+  <RimTouch.ZoomInertiaDamping>Zoom inertia damping: </RimTouch.ZoomInertiaDamping>
+  <RimTouch.ResetTouchTuning>Reset touch tuning</RimTouch.ResetTouchTuning>
+  <RimTouch.ExtendedZoomRangeNote>Extended zoom range. Disabling restores prior bounds if this mod still owns them.</RimTouch.ExtendedZoomRangeNote>
+  <RimTouch.EnableExtendedZoomRange>Enable extended zoom range</RimTouch.EnableExtendedZoomRange>
+  <RimTouch.EnableExtendedZoomRangeDesc>Lets you zoom in closer and out further than vanilla allows.</RimTouch.EnableExtendedZoomRangeDesc>
+  <RimTouch.ZoomInMin>Zoom in (min size, lower = closer): </RimTouch.ZoomInMin>
+  <RimTouch.ZoomOutMax>Zoom out (max size, higher = further): </RimTouch.ZoomOutMax>
+  <RimTouch.ApplyZoomRangeNow>Apply zoom range now</RimTouch.ApplyZoomRangeNow>
+  <RimTouch.ResetZoomRange>Reset zoom range to default</RimTouch.ResetZoomRange>
+</LanguageData>
