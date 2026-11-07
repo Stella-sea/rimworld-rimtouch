@@ -715,12 +715,19 @@ namespace RimTouch
 
         private static void UpdateOneFingerWorld(ContactTouch touch, Vector2 gui)
         {
-            float elapsed = Time.realtimeSinceStartup - startTime;
             float moveDistance = Vector2.Distance(gui, startGui);
 
             if (mode == TouchMode.OneFinger)
             {
-                if (moveDistance > DragSlopPixels && elapsed < SelectHoldSeconds)
+                // No time window here: the old `elapsed < SelectHoldSeconds` gate
+                // meant a slow drag (one that took longer than 0.32 s to travel
+                // 18 px) could never become a pan at all, so the globe simply
+                // ignored it. The colony-map path already classifies purely on
+                // distance for the same reason; tap vs. pan on the world is
+                // still decided at release by the slop check below, and the
+                // world has no hold-to-select gesture that a time gate would
+                // protect (no WorldDragBox is ever started from here).
+                if (moveDistance > DragSlopPixels)
                 {
                     mode = TouchMode.MapPan;
                     panGestureDistance = moveDistance;
