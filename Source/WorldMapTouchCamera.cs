@@ -30,6 +30,12 @@ namespace RimTouch
             ReflectionGuard.TrySetField(WorldRotationAnimationLerpField, driver, 1f);
             SuppressWorldCameraEdgeScrollState(driver);
             if (WorldCameraApplyPositionMethod != null) ReflectionGuard.TryInvoke(WorldCameraApplyPositionMethod, driver, null);
+            // Re-anchor after a twist without the roll constraint: the twist is
+            // a deliberate rotation (including roll), and constraining the
+            // re-anchor would fight it and make two-finger rotation misbehave.
+            // Re-anchor after a twist with the free anchor rotation: the twist is
+            // a deliberate rotation (including roll), and constraining the
+            // re-anchor would fight it and make two-finger rotation misbehave.
             if (hasAnchor) KeepWorldPointUnderGui(driver, anchor, gui);
             TouchInputProof.RecordTwist(clockwiseDegrees);
             return true;
@@ -174,7 +180,18 @@ namespace RimTouch
             Vector2 guiDelta = currentGui - previousGui;
             if (worldPanAnchorValid)
             {
-                if (KeepWorldPointUnderGui(driver, worldPanAnchorPoint, currentGui))
+                bool ok;
+                if (LockNorthUpOnDragEnabled())
+                {
+                    // Turntable drag: rotate around the north pole and the
+                    // screen's horizontal axis only, so the drag can never roll.
+                    ok = ApplyTurntableDrag(driver, guiDelta);
+                }
+                else
+                {
+                    ok = KeepWorldPointUnderGui(driver, worldPanAnchorPoint, currentGui);
+                }
+                if (ok)
                 {
                     worldInertiaAnchorValid = true;
                     worldInertiaAnchorPoint = worldPanAnchorPoint;
@@ -260,16 +277,13 @@ namespace RimTouch
                 deltaRotation = Quaternion.Slerp(Quaternion.identity, deltaRotation, Mathf.Lerp(1f, WorldAnchorPoleMinimumScale, poleDamping));
             }
 
+
             // The anchor delta is a world-space rotation (it maps the anchor's
             // world direction onto the finger's), so it is pre-multiplied - the
             // same convention ApplyWorldTwist uses for view-space rotations.
             // Post-multiplication applied the delta in the sphere's local frame,
             // which let the grabbed point drift once the globe was already rotated.
             Quaternion newRotation = deltaRotation * sphereRotation;
-            if (RimTouchMod.Settings != null && RimTouchMod.Settings.lockNorthUpOnDrag)
-            {
-                newRotation = LockNorthUp(newRotation, GetWorldCamera(driver));
-            }
             if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
             {
                 return false;
@@ -282,43 +296,63 @@ namespace RimTouch
             return true;
         }
 
-        // Keeps the globe's north pole pointing up on screen while dragging.
-        // The anchor delta (FromToRotation) rotates around an axis through the
-        // anchor and the finger point; when the drag is off-centre that axis has
-        // a component along the view direction, so the view rolls as well as pans:
-        // a straight upward drag also spins the map, and dragging in a small
-        // circle spins the whole view. Project the north pole onto the screen,
-        // measure how far it has rolled from screen-up, and counter-rotate around
-        // the view axis. This is the same "lock north up" the base game offers;
-        // the correction is a view-space rotation (pre-multiplication), the same
-        // convention ApplyWorldTwist uses. When the camera looks straight at a
-        // pole the projection degenerates and the correction is skipped.
-        private static Quaternion LockNorthUp(Quaternion rotation, Camera camera)
+        private static bool LockNorthUpOnDragEnabled()
         {
+            return RimTouchMod.Settings != null && RimTouchMod.Settings.lockNorthUpOnDrag;
+        }
+
+        // Turntable drag (Blender's default orbit, Fusion360 Constrained Orbit,
+        // Google Maps): the finger's screen movement rotates the globe around two
+        // axes only - the current north pole (horizontal drag spins the globe like
+        // a desk globe) and the screen's horizontal axis (vertical drag tilts it).
+        // Because the rotation is built from those two axes, it can never contain
+        // roll, so north stays up and there is nothing to snap back when the drag
+        // ends - unlike correcting the rotation afterwards, which fights the anchor
+        // (each frame the anchor re-introduces the roll the correction removed, so
+        // the view wobbles mid-drag and jerks straight on release). The amount uses
+        // the same pixels-to-rotation calibration as the dolly path, so on-globe and
+        // off-globe drags feel consistent. The grabbed point tracks the finger
+        // approximately (a turntable has two degrees of freedom, so it cannot also
+        // pin a point exactly); the closed loop re-evaluates every frame.
+        // GUI Y points down: dragging right (delta.x > 0) yaws the globe right,
+        // dragging up (delta.y < 0) pitches it up.
+        private static bool ApplyTurntableDrag(WorldCameraDriver driver, Vector2 guiDelta)
+        {
+            if (driver == null || WorldCameraSphereRotationField == null)
+            {
+                return false;
+            }
+            Camera camera = GetWorldCamera(driver);
             if (camera == null)
             {
-                return rotation;
+                return false;
             }
-            Vector3 forward = camera.transform.forward;
-            Vector3 up = camera.transform.up;
-            if (forward.sqrMagnitude <= 0.0001f || up.sqrMagnitude <= 0.0001f)
+            Quaternion sphereRotation;
+            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
             {
-                return rotation;
+                return false;
             }
-            forward = forward.normalized;
-            up = up.normalized;
-            Vector3 northWorld = rotation * Vector3.up;
-            Vector3 northOnScreen = northWorld - forward * Vector3.Dot(northWorld, forward);
-            if (northOnScreen.sqrMagnitude <= 0.0001f)
+            Vector3 north = sphereRotation * Vector3.up;
+            Vector3 screenRight = camera.transform.right;
+            if (north.sqrMagnitude <= 0.0001f || screenRight.sqrMagnitude <= 0.0001f)
             {
-                return rotation;
+                return false;
             }
-            float roll = Vector3.SignedAngle(up, northOnScreen.normalized, forward);
-            if (float.IsNaN(roll) || float.IsInfinity(roll) || Mathf.Abs(roll) < 0.01f)
+            float altitudeFactor = Mathf.Lerp(0.4f, 1.4f, Mathf.Clamp01(driver.AltitudePercent));
+            float degreesPerPixel = WorldPanPixelsToRotation * altitudeFactor;
+            Quaternion yaw = Quaternion.AngleAxis(guiDelta.x * degreesPerPixel, north.normalized);
+            Quaternion pitch = Quaternion.AngleAxis(guiDelta.y * degreesPerPixel, screenRight.normalized);
+            Quaternion newRotation = yaw * pitch * sphereRotation;
+            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
             {
-                return rotation;
+                return false;
             }
-            return Quaternion.AngleAxis(-roll, forward) * rotation;
+            SuppressWorldCameraEdgeScrollState(driver);
+            if (WorldCameraApplyPositionMethod != null)
+            {
+                ReflectionGuard.TryInvoke(WorldCameraApplyPositionMethod, driver, null);
+            }
+            return true;
         }
 
         private static bool TryGetWorldSpherePointAtGui(Vector2 gui, out Vector3 point)

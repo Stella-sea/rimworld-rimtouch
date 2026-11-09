@@ -180,8 +180,14 @@ namespace RimTouch
                 }
                 else
                 {
-                    worldInertiaGui += worldPanVelocity * PanInertiaStrength * WorldPanInertiaStrengthScale * GetWorldPanInertiaMoveScale(driver) * dt;
-                    if (!KeepWorldPointUnderGui(driver, worldInertiaAnchorPoint, worldInertiaGui))
+                    Vector2 inertiaGuiDelta = worldPanVelocity * PanInertiaStrength * WorldPanInertiaStrengthScale * GetWorldPanInertiaMoveScale(driver) * dt;
+                    worldInertiaGui += inertiaGuiDelta;
+                    // The inertia continues the drag, so it uses the same rotation
+                    // as the drag: turntable when the lock is on, free anchor otherwise.
+                    bool inertiaOk = LockNorthUpOnDragEnabled()
+                        ? ApplyTurntableDrag(driver, inertiaGuiDelta)
+                        : KeepWorldPointUnderGui(driver, worldInertiaAnchorPoint, worldInertiaGui);
+                    if (!inertiaOk)
                     {
                         worldPanVelocity = Vector2.zero;
                         worldInertiaAnchorValid = false;

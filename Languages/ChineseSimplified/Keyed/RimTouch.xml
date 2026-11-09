@@ -8,7 +8,7 @@
   <RimTouch.TwistCommitDegrees>旋转触发角度：</RimTouch.TwistCommitDegrees>
   <RimTouch.TwistCommitDegreesDesc>双指扭转多少度才开始旋转。越大越难在缩放或拖动时误触；一旦手势被判定为缩放或拖动，本次手势内不再触发旋转。</RimTouch.TwistCommitDegreesDesc>
   <RimTouch.LockNorthUpOnDrag>拖动地球时锁定正北方向</RimTouch.LockNorthUpOnDrag>
-  <RimTouch.LockNorthUpOnDragDesc>单指拖动地球时保持正北朝上，直线拖动只平移视野、原地画圈也不会让视野自旋。关闭则恢复自由旋转的拖动。</RimTouch.LockNorthUpOnDragDesc>
+  <RimTouch.LockNorthUpOnDragDesc>单指拖动地球时不再产生滚转：直线拖动只平移视野、原地画圈也不会让视野自旋；北向保持拖动开始时的朝向（已朝北则始终朝北）。关闭则恢复自由旋转的拖动。</RimTouch.LockNorthUpOnDragDesc>
   <RimTouch.AllowExtraUiScales>允许额外 UI 缩放（高级）</RimTouch.AllowExtraUiScales>
   <RimTouch.AllowExtraUiScalesDesc>允许使用超出游戏常规分辨率检查的缩放比例。关掉可恢复原生缩放选项。</RimTouch.AllowExtraUiScalesDesc>
   <RimTouch.ExtraScalesUnavailable>当前游戏版本不支持额外缩放，将使用原生缩放限制。</RimTouch.ExtraScalesUnavailable>
