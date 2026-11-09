@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>RimTouch – Windows 1.7 测试版</name>
+  <author>Tatsuki Tanaka；Windows 续作：Sweet Briana 与 Cinder</author>
+  <packageId>cinder.rimtouch17.private</packageId>
+  <supportedVersions><li>1.7</li></supportedVersions>
+  <modDependencies><li><packageId>brrainz.harmony</packageId><displayName>Harmony</displayName><steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl></li></modDependencies>
+  <loadAfter><li>ray1203.simplecamerasetting</li></loadAfter>
+  <description>【测试版】Windows 1.7 触控候选版，实机验收中。请单独启用 Harmony，且只启用一个 RimTouch。GPL-3.0-or-later；原作者与对应源码已保留。</description>
+</ModMetaData>
