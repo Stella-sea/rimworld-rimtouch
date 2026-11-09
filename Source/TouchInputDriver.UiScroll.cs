@@ -85,6 +85,18 @@ namespace RimTouch
             suppressReleaseTap = true;
             TouchTapRepair.Clear();
 
+            // A scroll gesture must not also drive the control under the finger: if
+            // the drag starts on a slider, the slider would otherwise read the same
+            // mouse-drag and change its value while the view scrolls. Consume the drag
+            // event so only the scroll sees it. Scrolling is scrolling; dragging a
+            // slider is dragging a slider. (Only MouseDrag is consumed: the press itself
+            // is left alone so a tap on a control still works.)
+            Event currentEvent = Event.current;
+            if (currentEvent != null && currentEvent.type == EventType.MouseDrag)
+            {
+                currentEvent.Use();
+            }
+
             if (lastUiScrollApplyFrame == Time.frameCount)
             {
                 return true;

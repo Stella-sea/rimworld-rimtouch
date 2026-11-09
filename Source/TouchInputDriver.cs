@@ -733,6 +733,10 @@ namespace RimTouch
                     panGestureDistance = moveDistance;
                     lastWorldPanSampleTime = startTime;
                     worldPanAnchorValid = ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(startGui, out worldPanAnchorPoint);
+                    if (worldPanAnchorValid && LockNorthUpOnDragEnabled() && AutoLockNorthOnDragEnabled())
+                    {
+                        SnapNorthToUp();
+                    }
                     suppressReleaseTap = true;
                     SuppressUiClickFallout();
                     CancelWorldDragBox();

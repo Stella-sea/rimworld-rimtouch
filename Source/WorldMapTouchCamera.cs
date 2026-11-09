@@ -217,8 +217,12 @@ namespace RimTouch
             return new Vector2(delta.x, -delta.y) * WorldPanPixelsToRotation * altitudeFactor;
         }
 
-        private static bool KeepWorldPointUnderGui(WorldCameraDriver driver, Vector3 anchorPoint, Vector2 gui)
+        // The (clamped) world-space rotation that would keep the anchor point under
+        // the finger, from real 3D geometry. Shared by the free anchor drag and the
+        // constrained turntable drag below, so the two paths cannot drift apart.
+        private static bool TryComputeWorldAnchorDelta(WorldCameraDriver driver, Vector3 anchorPoint, Vector2 gui, out Quaternion deltaRotation)
         {
+            deltaRotation = Quaternion.identity;
             if (driver == null || WorldCameraSphereRotationField == null)
             {
                 return false;
@@ -242,13 +246,7 @@ namespace RimTouch
             Vector3 currentNormal = currentDir.normalized;
             float poleFactor = Mathf.Max(Mathf.Abs(anchorNormal.y), Mathf.Abs(currentNormal.y), GetWorldPoleFactor(driver));
 
-            Quaternion sphereRotation;
-            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
-            {
-                return false;
-            }
-
-            Quaternion deltaRotation = Quaternion.FromToRotation(anchorNormal, currentNormal);
+            deltaRotation = Quaternion.FromToRotation(anchorNormal, currentNormal);
             float rotationAngle = Quaternion.Angle(Quaternion.identity, deltaRotation);
             if (float.IsNaN(rotationAngle) || float.IsInfinity(rotationAngle))
             {
@@ -277,6 +275,27 @@ namespace RimTouch
                 deltaRotation = Quaternion.Slerp(Quaternion.identity, deltaRotation, Mathf.Lerp(1f, WorldAnchorPoleMinimumScale, poleDamping));
             }
 
+            return true;
+        }
+
+        private static bool KeepWorldPointUnderGui(WorldCameraDriver driver, Vector3 anchorPoint, Vector2 gui)
+        {
+            if (driver == null || WorldCameraSphereRotationField == null)
+            {
+                return false;
+            }
+
+            Quaternion deltaRotation;
+            if (!TryComputeWorldAnchorDelta(driver, anchorPoint, gui, out deltaRotation))
+            {
+                return false;
+            }
+
+            Quaternion sphereRotation;
+            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
+            {
+                return false;
+            }
 
             // The anchor delta is a world-space rotation (it maps the anchor's
             // world direction onto the finger's), so it is pre-multiplied - the
@@ -295,7 +314,61 @@ namespace RimTouch
             }
             return true;
         }
+        private static bool AutoLockNorthOnDragEnabled()
+        {
+            return RimTouchMod.Settings != null && RimTouchMod.Settings.autoLockNorthOnDrag;
+        }
 
+        // Snaps the north pole back to screen-up by rolling the sphere around the
+        // camera's forward (view) axis. Used by the "auto-lock north" setting: when a
+        // one-finger drag starts, the north is re-locked to up first, so a player who
+        // twisted the globe with two fingers can recover north-up just by dragging,
+        // without hunting for the toggle. A snap at drag start (not a per-frame
+        // correction) cannot fight the drag the way the old test5 correction did.
+        private static bool SnapNorthToUp()
+        {
+            WorldCameraDriver driver = Find.WorldCameraDriver;
+            if (driver == null || WorldCameraSphereRotationField == null)
+            {
+                return false;
+            }
+            Camera camera = GetWorldCamera(driver);
+            if (camera == null)
+            {
+                return false;
+            }
+            Quaternion sphereRotation;
+            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
+            {
+                return false;
+            }
+            Vector3 north = sphereRotation * Vector3.up;
+            Vector3 forward = camera.transform.forward;
+            Vector3 up = camera.transform.up;
+            Vector3 nProj = north - forward * Vector3.Dot(north, forward);
+            if (nProj.sqrMagnitude <= 0.0001f)
+            {
+                return true;
+            }
+            nProj.Normalize();
+            float tilt = Vector3.SignedAngle(up, nProj, forward);
+            if (Mathf.Abs(tilt) < 0.1f)
+            {
+                return true;
+            }
+            Quaternion correction = Quaternion.AngleAxis(-tilt, forward);
+            Quaternion newRotation = correction * sphereRotation;
+            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
+            {
+                return false;
+            }
+            SuppressWorldCameraEdgeScrollState(driver);
+            if (WorldCameraApplyPositionMethod != null)
+            {
+                ReflectionGuard.TryInvoke(WorldCameraApplyPositionMethod, driver, null);
+            }
+            return true;
+        }
         private static bool LockNorthUpOnDragEnabled()
         {
             return RimTouchMod.Settings != null && RimTouchMod.Settings.lockNorthUpOnDrag;
@@ -314,8 +387,8 @@ namespace RimTouch
         // off-globe drags feel consistent. The grabbed point tracks the finger
         // approximately (a turntable has two degrees of freedom, so it cannot also
         // pin a point exactly); the closed loop re-evaluates every frame.
-        // GUI Y points down: dragging right (delta.x > 0) yaws the globe right,
-        // dragging up (delta.y < 0) pitches it up.
+        // GUI Y points down. Dragging right (delta.x > 0) must move the globe face
+        // right, dragging up (delta.y < 0) must move it up; see the sign note inside.
         private static bool ApplyTurntableDrag(WorldCameraDriver driver, Vector2 guiDelta)
         {
             if (driver == null || WorldCameraSphereRotationField == null)
@@ -333,17 +406,46 @@ namespace RimTouch
                 return false;
             }
             Vector3 north = sphereRotation * Vector3.up;
-            Vector3 screenRight = camera.transform.right;
-            if (north.sqrMagnitude <= 0.0001f || screenRight.sqrMagnitude <= 0.0001f)
+            // Pitch axis: the screen-horizontal axis PERPENDICULAR to north.
+            // camera.transform.right is only perpendicular to north while north is up;
+            // once the north is tilted (after a twist), pitching around it rolls the
+            // north (the tilted-start simulation drifted 6.8 deg). cross(north, forward)
+            // stays perpendicular to north, so the turntable stays roll-free in both
+            // directions. It equals screen-right while north is up. Falls back to
+            // screen-right if the camera looks straight down the north pole.
+            Vector3 pitchAxis = Vector3.Cross(north, camera.transform.forward);
+            if (pitchAxis.sqrMagnitude <= 0.0001f)
+            {
+                pitchAxis = camera.transform.right;
+            }
+            pitchAxis.Normalize();
+            if (north.sqrMagnitude <= 0.0001f || pitchAxis.sqrMagnitude <= 0.0001f)
             {
                 return false;
             }
             float altitudeFactor = Mathf.Lerp(0.4f, 1.4f, Mathf.Clamp01(driver.AltitudePercent));
             float sensitivity = RimTouchMod.Settings != null ? RimTouchMod.Settings.turntableDragSensitivity : 1f;
             float degreesPerPixel = WorldPanPixelsToRotation * altitudeFactor * sensitivity;
+            // Direction: the camera sits at -Z looking toward +Z, so the globe face
+            // under the finger is on the -Z side; a positive spin around the north pole
+            // moves that face LEFT, i.e. opposite to the finger. The anchor drag
+            // (KeepWorldPointUnderGui) proves the correct direction: the turntable must
+            // apply the INVERSE of the naive yaw*pitch rotation. A quaternion inverse
+            // reverses the multiplication order, so the correct rotation is
+            // pitch^-1 * yaw^-1 (not yaw^-1 * pitch^-1): merely negating both angles in
+            // the original order re-introduces roll (the tilted-start simulation drifted
+            // 6.8 deg). The "invert rotation axis" setting restores the old behaviour.
             Quaternion yaw = Quaternion.AngleAxis(guiDelta.x * degreesPerPixel, north.normalized);
-            Quaternion pitch = Quaternion.AngleAxis(guiDelta.y * degreesPerPixel, screenRight.normalized);
-            Quaternion newRotation = yaw * pitch * sphereRotation;
+            Quaternion pitch = Quaternion.AngleAxis(guiDelta.y * degreesPerPixel, pitchAxis);
+            Quaternion newRotation;
+            if (RimTouchMod.Settings != null && RimTouchMod.Settings.invertTurntableAxis)
+            {
+                newRotation = yaw * pitch * sphereRotation;
+            }
+            else
+            {
+                newRotation = Quaternion.Inverse(pitch) * Quaternion.Inverse(yaw) * sphereRotation;
+            }
             if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
             {
                 return false;
