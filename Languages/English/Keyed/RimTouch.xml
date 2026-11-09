@@ -9,6 +9,8 @@
   <RimTouch.TwistCommitDegreesDesc>How far two fingers must twist (in degrees) before the globe starts rotating. Higher values make accidental rotation during pinch-zoom or drag much less likely; once a gesture is clearly a pinch or a drag, rotation is locked out for that gesture.</RimTouch.TwistCommitDegreesDesc>
   <RimTouch.LockNorthUpOnDrag>Lock north up while dragging the globe</RimTouch.LockNorthUpOnDrag>
   <RimTouch.LockNorthUpOnDragDesc>Dragging the globe with one finger no longer rolls the view: a straight drag only pans, and dragging in a circle does not spin it. North keeps whatever direction it had when the drag started (north-up stays north-up). Turn off to keep the free globe-spinning drag.</RimTouch.LockNorthUpOnDragDesc>
+  <RimTouch.TurntableDragSensitivity>Turntable drag speed: </RimTouch.TurntableDragSensitivity>
+  <RimTouch.TurntableDragSensitivityDesc>How fast the globe turns when you drag with one finger (turntable mode only). 1.00x is the default; lower values make dragging slower and more precise, higher values make it faster. Only applies while 'Lock north up while dragging' is on.</RimTouch.TurntableDragSensitivityDesc>
   <RimTouch.AllowExtraUiScales>Allow extra UI scales (advanced)</RimTouch.AllowExtraUiScales>
   <RimTouch.AllowExtraUiScalesDesc>Opt in to scales outside the game's normal resolution checks. Turn this off to restore the native scale choices.</RimTouch.AllowExtraUiScalesDesc>
   <RimTouch.ExtraScalesUnavailable>Extra scales are unavailable on this game build; native scale limits apply.</RimTouch.ExtraScalesUnavailable>

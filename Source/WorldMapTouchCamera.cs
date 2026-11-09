@@ -339,7 +339,8 @@ namespace RimTouch
                 return false;
             }
             float altitudeFactor = Mathf.Lerp(0.4f, 1.4f, Mathf.Clamp01(driver.AltitudePercent));
-            float degreesPerPixel = WorldPanPixelsToRotation * altitudeFactor;
+            float sensitivity = RimTouchMod.Settings != null ? RimTouchMod.Settings.turntableDragSensitivity : 1f;
+            float degreesPerPixel = WorldPanPixelsToRotation * altitudeFactor * sensitivity;
             Quaternion yaw = Quaternion.AngleAxis(guiDelta.x * degreesPerPixel, north.normalized);
             Quaternion pitch = Quaternion.AngleAxis(guiDelta.y * degreesPerPixel, screenRight.normalized);
             Quaternion newRotation = yaw * pitch * sphereRotation;
