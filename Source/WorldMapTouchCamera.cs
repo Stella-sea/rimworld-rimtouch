@@ -183,9 +183,12 @@ namespace RimTouch
                 bool ok;
                 if (LockNorthUpOnDragEnabled())
                 {
-                    // Turntable drag: rotate around the north pole and the
-                    // screen's horizontal axis only, so the drag can never roll.
-                    ok = ApplyTurntableDrag(driver, guiDelta);
+                    // Projected turntable: the anchor rotation projected onto the
+                    // turntable axes, so the grabbed point tracks the finger (grab
+                    // error 8-10px instead of 163-217px) without rolling. Falls back
+                    // to the fixed-k turntable when the anchor or raycast is missing.
+                    ok = ApplyProjectedTurntableDrag(driver, currentGui)
+                        || ApplyTurntableDrag(driver, guiDelta);
                 }
                 else
                 {
@@ -389,6 +392,126 @@ namespace RimTouch
         // pin a point exactly); the closed loop re-evaluates every frame.
         // GUI Y points down. Dragging right (delta.x > 0) must move the globe face
         // right, dragging up (delta.y < 0) must move it up; see the sign note inside.
+        // Records the grabbed point in sphere-LOCAL coords (a fixed geographic location)
+        // from the world-space anchor captured at drag start. The projected turntable
+        // needs the local form: each frame it recomputes the anchor CURRENT world
+        // direction as sphereRotation * local, so the projection is a feedback loop.
+        private static void UpdateWorldPanAnchorLocal()
+        {
+            WorldCameraDriver driver = Find.WorldCameraDriver;
+            if (driver == null || WorldCameraSphereRotationField == null)
+            {
+                worldPanAnchorLocal = Vector3.zero;
+                return;
+            }
+            Quaternion sphereRotation;
+            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
+            {
+                worldPanAnchorLocal = Vector3.zero;
+                return;
+            }
+            Vector3 center = GetWorldSphereCenter(driver);
+            Vector3 anchorDir = worldPanAnchorPoint - center;
+            if (anchorDir.sqrMagnitude <= 0.0001f)
+            {
+                worldPanAnchorLocal = Vector3.zero;
+                return;
+            }
+            worldPanAnchorLocal = Quaternion.Inverse(sphereRotation) * anchorDir.normalized;
+        }
+
+        // Projected turntable (1c: grab-point tracking without roll). Per frame, compute
+        // the full anchor rotation that would put the grabbed geographic point under the
+        // finger, then project its angular velocity onto the turntable plane (north,
+        // screen-horizontal) and discard the roll component. The anchor is tracked in
+        // sphere-local coords, so each frame uses its CURRENT world direction: the
+        // projection is a feedback loop that converges instead of accumulating error.
+        // Simulation (anchor-test RunProjected): vertical drag grab error 163-217px
+        // (fixed-k turntable) -> 8-10px, north tilt change 0.2-0.3 deg. A full circle
+        // drag from a tilted start drifts the north up to ~4 deg (finite-rotation
+        // composition); straight drags, the normal case, stay at 0.2-0.3 deg.
+        // Returns false when the anchor or the finger raycast is unavailable, so the
+        // caller can fall back to the fixed-k turntable for that frame.
+        private static bool ApplyProjectedTurntableDrag(WorldCameraDriver driver, Vector2 currentGui)
+        {
+            if (driver == null || WorldCameraSphereRotationField == null)
+            {
+                return false;
+            }
+            Camera camera = GetWorldCamera(driver);
+            if (camera == null)
+            {
+                return false;
+            }
+            if (worldPanAnchorLocal.sqrMagnitude <= 0.0001f)
+            {
+                return false;
+            }
+            Quaternion sphereRotation;
+            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
+            {
+                return false;
+            }
+            Vector3 north = sphereRotation * Vector3.up;
+            Vector3 pitchAxis = Vector3.Cross(north, camera.transform.forward);
+            if (pitchAxis.sqrMagnitude <= 0.0001f)
+            {
+                pitchAxis = camera.transform.right;
+            }
+            pitchAxis.Normalize();
+            if (north.sqrMagnitude <= 0.0001f || pitchAxis.sqrMagnitude <= 0.0001f)
+            {
+                return false;
+            }
+            north.Normalize();
+            Vector3 targetPoint;
+            if (!TryGetWorldSpherePointAtGui(currentGui, out targetPoint))
+            {
+                return false;
+            }
+            Vector3 center = GetWorldSphereCenter(driver);
+            Vector3 targetDir = targetPoint - center;
+            if (targetDir.sqrMagnitude <= 0.0001f)
+            {
+                return false;
+            }
+            targetDir.Normalize();
+            Vector3 anchorDir = (sphereRotation * worldPanAnchorLocal).normalized;
+            Quaternion anchorDelta = Quaternion.FromToRotation(anchorDir, targetDir);
+            float angleDeg;
+            Vector3 axis;
+            anchorDelta.ToAngleAxis(out angleDeg, out axis);
+            if (angleDeg <= 0.001f || axis.sqrMagnitude <= 0.0001f)
+            {
+                return true;
+            }
+            Vector3 omega = axis.normalized * (angleDeg * Mathf.Deg2Rad);
+            Vector3 omegaTurn = north * Vector3.Dot(omega, north) + pitchAxis * Vector3.Dot(omega, pitchAxis);
+            float sensitivity = RimTouchMod.Settings != null ? RimTouchMod.Settings.turntableDragSensitivity : 1f;
+            float turnAngleDeg = omegaTurn.magnitude * Mathf.Rad2Deg * sensitivity;
+            if (turnAngleDeg <= 0.001f)
+            {
+                return true;
+            }
+            turnAngleDeg = Mathf.Min(turnAngleDeg, 45f);
+            Quaternion dR = Quaternion.AngleAxis(turnAngleDeg, omegaTurn.normalized);
+            if (RimTouchMod.Settings != null && RimTouchMod.Settings.invertTurntableAxis)
+            {
+                dR = Quaternion.Inverse(dR);
+            }
+            Quaternion newRotation = dR * sphereRotation;
+            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
+            {
+                return false;
+            }
+            SuppressWorldCameraEdgeScrollState(driver);
+            if (WorldCameraApplyPositionMethod != null)
+            {
+                ReflectionGuard.TryInvoke(WorldCameraApplyPositionMethod, driver, null);
+            }
+            return true;
+        }
+
         private static bool ApplyTurntableDrag(WorldCameraDriver driver, Vector2 guiDelta)
         {
             if (driver == null || WorldCameraSphereRotationField == null)

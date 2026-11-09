@@ -107,6 +107,11 @@ namespace RimTouch
         private static bool suppressReleaseTap;
         private static bool worldPanAnchorValid;
         private static Vector3 worldPanAnchorPoint;
+        // The same grabbed point in sphere-LOCAL coords (a fixed geographic location).
+        // The projected turntable needs it: each frame it uses the anchor CURRENT world
+        // direction (sphereRotation * local), not the drag-start world direction, so the
+        // projection is a feedback loop instead of accumulating error.
+        private static Vector3 worldPanAnchorLocal = Vector3.zero;
         private static bool worldInertiaAnchorValid;
         private static Vector3 worldInertiaAnchorPoint;
         private static Vector2 worldInertiaGui;
@@ -773,6 +778,7 @@ namespace RimTouch
                         panGestureDistance = moveDistance;
                         lastWorldPanSampleTime = startTime;
                         worldPanAnchorValid = ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(startGui, out worldPanAnchorPoint);
+                        if (worldPanAnchorValid) UpdateWorldPanAnchorLocal();
                         if (worldPanAnchorValid && LockNorthUpOnDragEnabled() && AutoLockNorthOnDragEnabled())
                         {
                             SnapNorthToUp();
@@ -867,6 +873,7 @@ namespace RimTouch
                 lastPanSampleTime = Time.realtimeSinceStartup;
                 lastWorldPanSampleTime = lastPanSampleTime;
                 worldPanAnchorValid = IsWorldMapActive() && ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(mid, out worldPanAnchorPoint);
+                if (worldPanAnchorValid) UpdateWorldPanAnchorLocal();
                 lastZoomSampleTime = lastPanSampleTime;
                 panGestureDistance = 0f;
                 ClearInertiaSamples();
@@ -1596,6 +1603,7 @@ namespace RimTouch
             lastUiScrollApplyFrame = -1000;
             worldPanAnchorValid = false;
             worldPanAnchorPoint = Vector3.zero;
+            worldPanAnchorLocal = Vector3.zero;
             worldDoubleTapPrimed = false;
             worldDragBoxStartGui = Vector2.zero;
             panGestureDistance = 0f;
