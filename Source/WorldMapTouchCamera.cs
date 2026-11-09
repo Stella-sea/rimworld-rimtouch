@@ -260,7 +260,17 @@ namespace RimTouch
                 deltaRotation = Quaternion.Slerp(Quaternion.identity, deltaRotation, Mathf.Lerp(1f, WorldAnchorPoleMinimumScale, poleDamping));
             }
 
-            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, sphereRotation * deltaRotation))
+            // The anchor delta is a world-space rotation (it maps the anchor's
+            // world direction onto the finger's), so it is pre-multiplied - the
+            // same convention ApplyWorldTwist uses for view-space rotations.
+            // Post-multiplication applied the delta in the sphere's local frame,
+            // which let the grabbed point drift once the globe was already rotated.
+            Quaternion newRotation = deltaRotation * sphereRotation;
+            if (RimTouchMod.Settings != null && RimTouchMod.Settings.lockNorthUpOnDrag)
+            {
+                newRotation = LockNorthUp(newRotation, GetWorldCamera(driver));
+            }
+            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
             {
                 return false;
             }
@@ -270,6 +280,45 @@ namespace RimTouch
                 ReflectionGuard.TryInvoke(WorldCameraApplyPositionMethod, driver, null);
             }
             return true;
+        }
+
+        // Keeps the globe's north pole pointing up on screen while dragging.
+        // The anchor delta (FromToRotation) rotates around an axis through the
+        // anchor and the finger point; when the drag is off-centre that axis has
+        // a component along the view direction, so the view rolls as well as pans:
+        // a straight upward drag also spins the map, and dragging in a small
+        // circle spins the whole view. Project the north pole onto the screen,
+        // measure how far it has rolled from screen-up, and counter-rotate around
+        // the view axis. This is the same "lock north up" the base game offers;
+        // the correction is a view-space rotation (pre-multiplication), the same
+        // convention ApplyWorldTwist uses. When the camera looks straight at a
+        // pole the projection degenerates and the correction is skipped.
+        private static Quaternion LockNorthUp(Quaternion rotation, Camera camera)
+        {
+            if (camera == null)
+            {
+                return rotation;
+            }
+            Vector3 forward = camera.transform.forward;
+            Vector3 up = camera.transform.up;
+            if (forward.sqrMagnitude <= 0.0001f || up.sqrMagnitude <= 0.0001f)
+            {
+                return rotation;
+            }
+            forward = forward.normalized;
+            up = up.normalized;
+            Vector3 northWorld = rotation * Vector3.up;
+            Vector3 northOnScreen = northWorld - forward * Vector3.Dot(northWorld, forward);
+            if (northOnScreen.sqrMagnitude <= 0.0001f)
+            {
+                return rotation;
+            }
+            float roll = Vector3.SignedAngle(up, northOnScreen.normalized, forward);
+            if (float.IsNaN(roll) || float.IsInfinity(roll) || Mathf.Abs(roll) < 0.01f)
+            {
+                return rotation;
+            }
+            return Quaternion.AngleAxis(-roll, forward) * rotation;
         }
 
         private static bool TryGetWorldSpherePointAtGui(Vector2 gui, out Vector3 point)

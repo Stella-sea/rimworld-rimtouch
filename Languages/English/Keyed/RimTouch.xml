@@ -7,6 +7,8 @@
   <RimTouch.EnableGlobeTwistDesc>Turn two fingers to roll the world view. A deliberate twist releases the world's north-up lock. Use North-up in the world view to straighten it again.</RimTouch.EnableGlobeTwistDesc>
   <RimTouch.TwistCommitDegrees>Rotation trigger angle: </RimTouch.TwistCommitDegrees>
   <RimTouch.TwistCommitDegreesDesc>How far two fingers must twist (in degrees) before the globe starts rotating. Higher values make accidental rotation during pinch-zoom or drag much less likely; once a gesture is clearly a pinch or a drag, rotation is locked out for that gesture.</RimTouch.TwistCommitDegreesDesc>
+  <RimTouch.LockNorthUpOnDrag>Lock north up while dragging the globe</RimTouch.LockNorthUpOnDrag>
+  <RimTouch.LockNorthUpOnDragDesc>Keep the globe's north pole pointing up while dragging with one finger, so a straight drag only pans the view and dragging in a circle does not spin it. Turn off to keep the free globe-spinning drag.</RimTouch.LockNorthUpOnDragDesc>
   <RimTouch.AllowExtraUiScales>Allow extra UI scales (advanced)</RimTouch.AllowExtraUiScales>
   <RimTouch.AllowExtraUiScalesDesc>Opt in to scales outside the game's normal resolution checks. Turn this off to restore the native scale choices.</RimTouch.AllowExtraUiScalesDesc>
   <RimTouch.ExtraScalesUnavailable>Extra scales are unavailable on this game build; native scale limits apply.</RimTouch.ExtraScalesUnavailable>

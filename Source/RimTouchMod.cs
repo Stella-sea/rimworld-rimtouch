@@ -40,6 +40,7 @@ namespace RimTouch
             listing.Label("RimTouch.TwistCommitDegrees".Translate() + Settings.twistCommitDegrees.ToString("0") + "\u00b0");
             Settings.twistCommitDegrees = listing.Slider(Settings.twistCommitDegrees, 3f, 20f);
             listing.Label("RimTouch.TwistCommitDegreesDesc".Translate());
+            listing.CheckboxLabeled("RimTouch.LockNorthUpOnDrag".Translate(), ref Settings.lockNorthUpOnDrag, "RimTouch.LockNorthUpOnDragDesc".Translate());
             listing.CheckboxLabeled("RimTouch.AllowExtraUiScales".Translate(), ref Settings.allowExtraUiScales, "RimTouch.AllowExtraUiScalesDesc".Translate());
             if (!RimTouchBootstrap.UiScaleHookReady) listing.Label("RimTouch.ExtraScalesUnavailable".Translate());
             if (listing.ButtonText("RimTouch.ResetUiScale".Translate()))
@@ -133,6 +134,7 @@ namespace RimTouch
         public bool enableTouchMode = true;
         public bool enableGlobeTwist = true;
         public float twistCommitDegrees = 10f;
+        public bool lockNorthUpOnDrag = true;
         public bool allowExtraUiScales;
         public float panInertiaStrength = 1.05f;
         public float panInertiaDamping = 4.8f;
@@ -163,6 +165,7 @@ namespace RimTouch
             Scribe_Values.Look(ref enableTouchMode, "enableTouchMode", true);
             Scribe_Values.Look(ref enableGlobeTwist, "enableGlobeTwist", true);
             Scribe_Values.Look(ref twistCommitDegrees, "twistCommitDegrees", 10f);
+            Scribe_Values.Look(ref lockNorthUpOnDrag, "lockNorthUpOnDrag", true);
             Scribe_Values.Look(ref allowExtraUiScales, "allowExtraUiScales", false);
             Scribe_Values.Look(ref panInertiaStrength, "panInertiaStrength", 1.05f);
             Scribe_Values.Look(ref panInertiaDamping, "panInertiaDamping", 4.8f);
