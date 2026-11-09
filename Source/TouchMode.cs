@@ -6,6 +6,7 @@ namespace RimTouch
         OneFinger,
         MapPan,
         SelectionHold,
+        WorldDragBox,
         TwoFinger,
         VanillaMapTool
     }

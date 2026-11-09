@@ -68,6 +68,7 @@ namespace RimTouch
             listing.Label("RimTouch.TurntableDragSensitivityDesc".Translate());
             listing.CheckboxLabeled("RimTouch.InvertTurntableAxis".Translate(), ref Settings.invertTurntableAxis, "RimTouch.InvertTurntableAxisDesc".Translate());
             listing.CheckboxLabeled("RimTouch.AutoLockNorthOnDrag".Translate(), ref Settings.autoLockNorthOnDrag, "RimTouch.AutoLockNorthOnDragDesc".Translate());
+            listing.CheckboxLabeled("RimTouch.EnableWorldPointDrag".Translate(), ref Settings.enableWorldPointDrag, "RimTouch.EnableWorldPointDragDesc".Translate());
             listing.Gap();
 
             SectionHeader(listing, "RimTouch.SectionInertia");
@@ -161,6 +162,7 @@ namespace RimTouch
         public float turntableDragSensitivity = 1f;
         public bool invertTurntableAxis = false;
         public bool autoLockNorthOnDrag = false;
+        public bool enableWorldPointDrag = true;
         public bool allowExtraUiScales;
         public float panInertiaStrength = 1.05f;
         public float panInertiaDamping = 4.8f;
@@ -169,7 +171,7 @@ namespace RimTouch
         public bool extendedZoomEnabled = RimTouchMod.DefaultExtendedZoomEnabled;
         public float extendedZoomInMin = RimTouchMod.DefaultExtendedZoomInMin;
         public float extendedZoomOutMax = RimTouchMod.DefaultExtendedZoomOutMax;
-        public int settingsVersion = 6;
+        public int settingsVersion = 7;
 
         public void ResetTouchTuning()
         {
@@ -195,6 +197,7 @@ namespace RimTouch
             Scribe_Values.Look(ref turntableDragSensitivity, "turntableDragSensitivity", 1f);
             Scribe_Values.Look(ref invertTurntableAxis, "invertTurntableAxis", false);
             Scribe_Values.Look(ref autoLockNorthOnDrag, "autoLockNorthOnDrag", false);
+            Scribe_Values.Look(ref enableWorldPointDrag, "enableWorldPointDrag", true);
             Scribe_Values.Look(ref allowExtraUiScales, "allowExtraUiScales", false);
             Scribe_Values.Look(ref panInertiaStrength, "panInertiaStrength", 1.05f);
             Scribe_Values.Look(ref panInertiaDamping, "panInertiaDamping", 4.8f);
@@ -227,7 +230,7 @@ namespace RimTouch
                         extendedZoomOutMax = RimTouchMod.DefaultExtendedZoomOutMax;
                     }
                 }
-                settingsVersion = 6;
+                settingsVersion = 7;
             }
         }
     }

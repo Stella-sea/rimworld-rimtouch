@@ -19,6 +19,8 @@
   <RimTouch.InvertTurntableAxisDesc>翻转转盘拖动方向：往右拖时地球往左转、往上拖时往下转。默认关闭（拖动跟随手指）。只有习惯旧的反向手感时才打开。</RimTouch.InvertTurntableAxisDesc>
   <RimTouch.AutoLockNorthOnDrag>拖动开始时自动锁定北方</RimTouch.AutoLockNorthOnDrag>
   <RimTouch.AutoLockNorthOnDragDesc>单指在地球上开始拖动时，先把北向转回正上方，再开始拖动。双指扭转把方向扭歪后，不用找开关，直接拖一下就能回正。仅在“拖动地球时锁定正北方向”开启时生效。</RimTouch.AutoLockNorthOnDragDesc>
+  <RimTouch.EnableWorldPointDrag>点按拖动：在地球上多选</RimTouch.EnableWorldPointDrag>
+  <RimTouch.EnableWorldPointDragDesc>在地球上双击后按住拖动，画出选择框，框住的政权与定居点都会被选中，和鼠标拖拽多选一样。选择框带行进蚁行动画边框。关闭后，双击按住拖动改为平移地球。</RimTouch.EnableWorldPointDragDesc>
   <RimTouch.AllowExtraUiScales>允许额外 UI 缩放（高级）</RimTouch.AllowExtraUiScales>
   <RimTouch.AllowExtraUiScalesDesc>允许使用超出游戏常规分辨率检查的缩放比例。关掉可恢复原生缩放选项。</RimTouch.AllowExtraUiScalesDesc>
   <RimTouch.ExtraScalesUnavailable>当前游戏版本不支持额外缩放，将使用原生缩放限制。</RimTouch.ExtraScalesUnavailable>

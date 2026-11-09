@@ -84,6 +84,8 @@ namespace RimTouch
         private static readonly MethodInfo WorldCameraApplyPositionMethod = ReflectionGuard.Method(typeof(WorldCameraDriver), "ApplyPositionToGameObject");
         private static readonly FieldInfo WorldSelectorDragBoxField = ReflectionGuard.Field(typeof(WorldSelector), "dragBox");
         private static readonly FieldInfo WorldDragBoxActiveField = ReflectionGuard.Field(typeof(WorldDragBox), "active");
+        private static readonly FieldInfo WorldDragBoxStartField = ReflectionGuard.Field(typeof(WorldDragBox), "start");
+        private static readonly MethodInfo WorldSelectorSelectInsideDragBoxMethod = ReflectionGuard.Method(typeof(WorldSelector), "SelectInsideDragBox");
         private static readonly PropertyInfo WorldRenderedNowProperty = ReflectionGuard.Property(typeof(WorldRendererUtility), "WorldRenderedNow", false);
         private static readonly MethodInfo WorldRenderedNowGetter = ReflectionGuard.Method(typeof(WorldRendererUtility), "get_WorldRenderedNow", false);
         private static readonly FieldInfo WorldRenderedNowField = ReflectionGuard.Field(typeof(WorldRendererUtility), "WorldRenderedNow", false);
@@ -98,6 +100,10 @@ namespace RimTouch
         private static float startTime;
         private static bool startedOverUi;
         private static bool rightClickDone;
+        private static float lastWorldTapTime = -100f;
+        private static Vector2 lastWorldTapGui = Vector2.zero;
+        private static bool worldDoubleTapPrimed;
+        private static Vector2 worldDragBoxStartGui = Vector2.zero;
         private static bool suppressReleaseTap;
         private static bool worldPanAnchorValid;
         private static Vector3 worldPanAnchorPoint;
@@ -556,6 +562,15 @@ namespace RimTouch
         public static void OnGUI()
         {
             EnsureRimWorldDragBoxState();
+            if (mode == TouchMode.WorldDragBox && IsWorldMapActive())
+            {
+                Rect box = new Rect(
+                    Mathf.Min(worldDragBoxStartGui.x, lastGui.x),
+                    Mathf.Min(worldDragBoxStartGui.y, lastGui.y),
+                    Mathf.Abs(lastGui.x - worldDragBoxStartGui.x),
+                    Mathf.Abs(lastGui.y - worldDragBoxStartGui.y));
+                DrawMarchingAntsRect(box);
+            }
         }
 
         private static void UpdateOneFinger(ContactTouch touch)
@@ -577,6 +592,19 @@ namespace RimTouch
                 lastSignificantMovementElapsed = 0f;
                 selectPrimed = false;
                 ClearInertiaSamples();
+                // Point-and-drag (world): double-tap, hold, drag to multi-select. The
+                // standard double-tap window is 300 ms; the second tap must land near
+                // the first so a tap elsewhere does not arm it. This only arms the
+                // gesture; the drag-box itself starts once the finger moves past slop.
+                worldDoubleTapPrimed = false;
+                if (!startedOverUi && IsWorldMapActive() && WorldPointDragEnabled())
+                {
+                    float sinceLastTap = Time.realtimeSinceStartup - lastWorldTapTime;
+                    if (sinceLastTap <= 0.3f && Vector2.Distance(gui, lastWorldTapGui) <= 40f)
+                    {
+                        worldDoubleTapPrimed = true;
+                    }
+                }
                 if (!startedOverUi)
                 {
                     SuppressUiClickFallout();
@@ -724,22 +752,35 @@ namespace RimTouch
                 // 18 px) could never become a pan at all, so the globe simply
                 // ignored it. The colony-map path already classifies purely on
                 // distance for the same reason; tap vs. pan on the world is
-                // still decided at release by the slop check below, and the
-                // world has no hold-to-select gesture that a time gate would
-                // protect (no WorldDragBox is ever started from here).
+                // still decided at release by the slop check below.
                 if (moveDistance > DragSlopPixels)
                 {
-                    mode = TouchMode.MapPan;
-                    panGestureDistance = moveDistance;
-                    lastWorldPanSampleTime = startTime;
-                    worldPanAnchorValid = ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(startGui, out worldPanAnchorPoint);
-                    if (worldPanAnchorValid && LockNorthUpOnDragEnabled() && AutoLockNorthOnDragEnabled())
+                    if (worldDoubleTapPrimed)
                     {
-                        SnapNorthToUp();
+                        // Point-and-drag: double-tap, hold, drag. Enters the world
+                        // drag-box instead of panning, so the gesture is deliberate
+                        // and reliable (no more "sometimes it multi-selects, sometimes
+                        // it pans" from the touch leaking through to vanilla).
+                        mode = TouchMode.WorldDragBox;
+                        panGestureDistance = moveDistance;
+                        suppressReleaseTap = true;
+                        SuppressUiClickFallout();
+                        BeginWorldDragBox(startGui);
                     }
-                    suppressReleaseTap = true;
-                    SuppressUiClickFallout();
-                    CancelWorldDragBox();
+                    else
+                    {
+                        mode = TouchMode.MapPan;
+                        panGestureDistance = moveDistance;
+                        lastWorldPanSampleTime = startTime;
+                        worldPanAnchorValid = ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(startGui, out worldPanAnchorPoint);
+                        if (worldPanAnchorValid && LockNorthUpOnDragEnabled() && AutoLockNorthOnDragEnabled())
+                        {
+                            SnapNorthToUp();
+                        }
+                        suppressReleaseTap = true;
+                        SuppressUiClickFallout();
+                        CancelWorldDragBox();
+                    }
                 }
             }
 
@@ -752,11 +793,29 @@ namespace RimTouch
                 CancelWorldDragBox();
             }
 
+            if (mode == TouchMode.WorldDragBox)
+            {
+                // The drag-box rect is drawn in OnGUI (marching ants); the vanilla
+                // WorldDragBox tracks start + current mouse position, and the touch
+                // drives the OS mouse position, so SelectInsideDragBox on release
+                // sees the same rect the user drew. Keep the box alive and do not pan.
+                SuppressUiClickFallout();
+                panGestureDistance = Mathf.Max(panGestureDistance, moveDistance);
+            }
+
             if (IsEnded(touch))
             {
                 if (mode == TouchMode.OneFinger && moveDistance <= DragSlopPixels && !rightClickDone)
                 {
+                    // Record the tap so the next touch can be recognised as the
+                    // second tap of a double-tap (point-and-drag arming).
+                    lastWorldTapTime = Time.realtimeSinceStartup;
+                    lastWorldTapGui = gui;
                     DoWorldLeftClick(gui);
+                }
+                else if (mode == TouchMode.WorldDragBox)
+                {
+                    FinishWorldDragBox();
                 }
                 FinalizeInertiaFromGesture();
                 FinishTouch();
@@ -1358,6 +1417,136 @@ namespace RimTouch
             }
         }
 
+        private static bool WorldPointDragEnabled()
+        {
+            return RimTouchMod.Settings != null && RimTouchMod.Settings.enableWorldPointDrag;
+        }
+
+        private static WorldDragBox GetWorldDragBox()
+        {
+            if (WorldSelectorDragBoxField == null)
+            {
+                return null;
+            }
+
+            WorldSelector selector;
+            try
+            {
+                selector = Find.WorldSelector;
+            }
+            catch
+            {
+                return null;
+            }
+
+            if (selector == null)
+            {
+                return null;
+            }
+
+            WorldDragBox dragBox;
+            return ReflectionGuard.TryGetField(WorldSelectorDragBoxField, selector, out dragBox) ? dragBox : null;
+        }
+
+        // Deliberate world drag-box (point-and-drag): double-tap, hold, drag on the
+        // globe. Mirrors the local-map Begin/FinishRimWorldDragBox pair, but the world
+        // box start is a screen/GUI position (UI.MousePositionOnUIInverted), not a map
+        // position, and selection runs through WorldSelector.SelectInsideDragBox.
+        private static void BeginWorldDragBox(Vector2 guiStart)
+        {
+            WorldDragBox dragBox = GetWorldDragBox();
+            if (dragBox == null || WorldDragBoxStartField == null || WorldDragBoxActiveField == null)
+            {
+                return;
+            }
+
+            if (!ReflectionGuard.TrySetField(WorldDragBoxStartField, dragBox, guiStart))
+            {
+                return;
+            }
+            ReflectionGuard.TrySetField(WorldDragBoxActiveField, dragBox, true);
+            worldDragBoxStartGui = guiStart;
+        }
+
+        private static void FinishWorldDragBox()
+        {
+            WorldSelector selector;
+            try
+            {
+                selector = Find.WorldSelector;
+            }
+            catch
+            {
+                selector = null;
+            }
+
+            WorldDragBox dragBox = GetWorldDragBox();
+            if (selector != null && dragBox != null && WorldSelectorSelectInsideDragBoxMethod != null)
+            {
+                try
+                {
+                    ReflectionGuard.TryInvoke(WorldSelectorSelectInsideDragBoxMethod, selector, null);
+                }
+                finally
+                {
+                    ReflectionGuard.TrySetField(WorldDragBoxActiveField, dragBox, false);
+                }
+            }
+            else if (dragBox != null)
+            {
+                ReflectionGuard.TrySetField(WorldDragBoxActiveField, dragBox, false);
+            }
+        }
+
+        // Marching-ants selection rectangle: translucent fill plus an animated dashed
+        // border whose dashes travel around the perimeter (the selection-box animation
+        // every touch canvas app uses: Photoshop, Figma, GIMP, macshot). The dash phase
+        // advances with realtime so the ants keep marching while the finger is held.
+        private static void DrawMarchingAntsRect(Rect rect)
+        {
+            if (rect.width < 2f || rect.height < 2f)
+            {
+                return;
+            }
+
+            Widgets.DrawRectFast(rect, new Color(0.6f, 0.8f, 1f, 0.10f));
+
+            const float dash = 9f;
+            const float gap = 7f;
+            const float speed = 48f;
+            float period = dash + gap;
+            float phase = (Time.realtimeSinceStartup * speed) % period;
+            Color border = new Color(1f, 1f, 1f, 0.95f);
+
+            Vector2[] corners = new Vector2[5];
+            corners[0] = new Vector2(rect.xMin, rect.yMin);
+            corners[1] = new Vector2(rect.xMax, rect.yMin);
+            corners[2] = new Vector2(rect.xMax, rect.yMax);
+            corners[3] = new Vector2(rect.xMin, rect.yMax);
+            corners[4] = corners[0];
+
+            float distance = -phase;
+            for (int e = 0; e < 4; e++)
+            {
+                Vector2 a = corners[e];
+                Vector2 b = corners[e + 1];
+                float edgeLen = Vector2.Distance(a, b);
+                Vector2 dir = edgeLen > 0.001f ? (b - a) / edgeLen : Vector2.zero;
+                float tt = distance;
+                while (tt < edgeLen)
+                {
+                    float segStart = Mathf.Max(tt, 0f);
+                    float segEnd = Mathf.Min(tt + dash, edgeLen);
+                    if (segEnd > segStart)
+                    {
+                        Widgets.DrawLine(a + dir * segStart, a + dir * segEnd, border, 2f);
+                    }
+                    tt += period;
+                }
+                distance += edgeLen;
+            }
+        }
+
         private static Selector GetLocalSelector()
         {
             // Find.Selector casts Find.UIRoot to UIRoot_Play in 1.7. Entry menus
@@ -1407,6 +1596,8 @@ namespace RimTouch
             lastUiScrollApplyFrame = -1000;
             worldPanAnchorValid = false;
             worldPanAnchorPoint = Vector3.zero;
+            worldDoubleTapPrimed = false;
+            worldDragBoxStartGui = Vector2.zero;
             panGestureDistance = 0f;
             lastSignificantMovementElapsed = 0f;
             selectPrimed = false;

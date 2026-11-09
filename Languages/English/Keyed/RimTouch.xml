@@ -19,6 +19,8 @@
   <RimTouch.InvertTurntableAxisDesc>Flip the turntable drag direction: dragging right rotates the globe left, dragging up rotates it down. Off by default (dragging follows your finger). Turn on only if you prefer the old inverted direction.</RimTouch.InvertTurntableAxisDesc>
   <RimTouch.AutoLockNorthOnDrag>Auto-lock north when a drag starts</RimTouch.AutoLockNorthOnDrag>
   <RimTouch.AutoLockNorthOnDragDesc>When a one-finger drag starts on the globe, first snap the north back to screen-up, then drag. Lets you recover north-up just by dragging after a two-finger twist, without hunting for the toggle. Only applies while "Lock north up while dragging" is on.</RimTouch.AutoLockNorthOnDragDesc>
+  <RimTouch.EnableWorldPointDrag>Point-and-drag to multi-select on the globe</RimTouch.EnableWorldPointDrag>
+  <RimTouch.EnableWorldPointDragDesc>Double-tap, hold, then drag on the globe to draw a selection box and select every faction and settlement inside it, like dragging with a mouse. The box is drawn with an animated marching-ants border. Turn off to keep double-tap-hold-drag panning the globe instead.</RimTouch.EnableWorldPointDragDesc>
   <RimTouch.AllowExtraUiScales>Allow extra UI scales (advanced)</RimTouch.AllowExtraUiScales>
   <RimTouch.AllowExtraUiScalesDesc>Opt in to scales outside the game's normal resolution checks. Turn this off to restore the native scale choices.</RimTouch.AllowExtraUiScalesDesc>
   <RimTouch.ExtraScalesUnavailable>Extra scales are unavailable on this game build; native scale limits apply.</RimTouch.ExtraScalesUnavailable>
