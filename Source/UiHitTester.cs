@@ -71,6 +71,17 @@ namespace RimTouch
 
         private static bool IsVanillaMapToolActive()
         {
+            // Find.DesignatorManager / Find.Targeter go through Find.MapUI,
+            // which casts Find.UIRoot to UIRoot_Play in 1.7 - that throws
+            // InvalidCastException on Entry screens (main menu, world
+            // creation / landing-site selection) and kills the whole touch
+            // update, so one-finger touches there do nothing at all (drag
+            // and tap alike). No map tool can be active without a running
+            // game anyway, so bail out the same way GetLocalSelector() does.
+            if (Current.ProgramState != ProgramState.Playing || !(Find.UIRoot is UIRoot_Play))
+            {
+                return false;
+            }
             if (Find.DesignatorManager != null && Find.DesignatorManager.SelectedDesignator != null)
             {
                 return true;
