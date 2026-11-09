@@ -786,6 +786,7 @@ namespace RimTouch
                 }
                 mode = TouchMode.TwoFinger;
                 GlobeTwist.Reset();
+                GlobeTwist.CommitDegrees = RimTouchMod.Settings != null ? RimTouchMod.Settings.twistCommitDegrees : 10f;
                 GlobeTwist.Update(guiA.x, guiA.y, guiB.x, guiB.y);
                 suppressReleaseTap = true;
                 SuppressUiClickFallout();
@@ -814,6 +815,7 @@ namespace RimTouch
             bool ended = IsEnded(a) || IsEnded(b);
             twoFingerMaxMove = Mathf.Max(twoFingerMaxMove, Vector2.Distance(guiA, twoFingerStartGuiA), Vector2.Distance(guiB, twoFingerStartGuiB));
             twoFingerMaxDistanceChange = Mathf.Max(twoFingerMaxDistanceChange, Mathf.Abs(distance - twoFingerStartDistance));
+            GlobeTwist.CommitDegrees = RimTouchMod.Settings != null ? RimTouchMod.Settings.twistCommitDegrees : 10f;
             float twistDegrees = ended ? 0 : GlobeTwist.Update(guiA.x, guiA.y, guiB.x, guiB.y);
 
             if (!ended && IsWorldMapActive())
