@@ -364,7 +364,16 @@ namespace RimTouch
 
         private static bool ShouldUseWorldAnchorPan()
         {
-            return Current.ProgramState == ProgramState.Playing && Find.CurrentMap != null;
+            // The anchor pan rotates the globe sphere directly (the same
+            // mechanism the two-finger twist uses, and twist demonstrably
+            // works on the landing-site page), so it only needs the world
+            // map to be active - not a colony or Playing state. The old gate
+            // (Playing + CurrentMap != null) forced the landing-site page
+            // onto the dolly path, and on that page the injected dolly never
+            // moves the globe, so one-finger drags did nothing at all.
+            // If the anchor raycast misses (finger off the globe), the
+            // caller still falls back to the dolly path as before.
+            return IsWorldMapActive();
         }
 
         private static bool TryGetWorldAltitude(WorldCameraDriver driver, out float altitude)
