@@ -235,6 +235,25 @@ namespace RimTouch
         }
     }
 
+    // Debug windows (Dialog_Debug, Dialog_OptionLister, Window_DebugTable,
+    // EditWindow_Log, EditWindow_TweakValues) do NOT go through
+    // Verse.Widgets.BeginScrollView: they call LudeonTK.DevGUI.BeginScrollView,
+    // which calls UnityEngine.GUI.BeginScrollView directly. The Widgets patch
+    // above therefore never sees them, which is why dragging a debug window's
+    // content did nothing and only its scrollbar worked. DevGUI's overload has
+    // the identical signature (Rect, ref Vector2, Rect, bool), so the same
+    // scroll handling applies verbatim. Verified against 1.7.4995
+    // Assembly-CSharp.dll: DevGUI.BeginScrollView token 0x0600015c, and
+    // Dialog_Debug.DoWindowContents calls it (never Widgets.BeginScrollView).
+    [HarmonyPatch(typeof(LudeonTK.DevGUI), "BeginScrollView")]
+    public static class DevGuiBeginScrollViewTouchPatch
+    {
+        public static void Prefix([HarmonyArgument(0)] Rect outRect, [HarmonyArgument(1)] ref Vector2 scrollPosition, [HarmonyArgument(2)] Rect viewRect)
+        {
+            TouchInputDriver.ProcessScrollViewTouch(outRect, viewRect, ref scrollPosition);
+        }
+    }
+
     [HarmonyPatch(typeof(WindowStack), "CloseWindowsBecauseClicked")]
     public static class WindowStackCloseWindowsBecauseClickedPatch
     {
