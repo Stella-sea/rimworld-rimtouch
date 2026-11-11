@@ -27,16 +27,6 @@ namespace RimTouch
             return "RimTouch";
         }
 
-        // Section header, RimTalk-style: a medium-font label with a rule under it,
-        // so the long settings list reads as grouped sections instead of one flat wall.
-        private static void SectionHeader(Listing_Standard listing, string key)
-        {
-            Text.Font = GameFont.Medium;
-            listing.Label(key.Translate());
-            Text.Font = GameFont.Small;
-            listing.GapLine();
-        }
-
         public override void DoSettingsWindowContents(Rect inRect)
         {
             Rect viewRect = new Rect(0f, 0f, inRect.width - 20f, Mathf.Max(inRect.height, settingsHeight));
@@ -44,8 +34,6 @@ namespace RimTouch
             Listing_Standard listing = new Listing_Standard();
             listing.Begin(viewRect);
 
-            listing.CheckboxLabeled("RimTouch.EnableTouchMode".Translate(), ref Settings.enableTouchMode, "RimTouch.EnableTouchModeDesc".Translate());
-            SectionHeader(listing, "RimTouch.SectionTouch");
             listing.CheckboxLabeled("RimTouch.EnableTouchMode".Translate(), ref Settings.enableTouchMode, "RimTouch.EnableTouchModeDesc".Translate());
             listing.Label("RimTouch.Input".Translate() + TouchSource.Status);
             listing.CheckboxLabeled("RimTouch.AllowExtraUiScales".Translate(), ref Settings.allowExtraUiScales, "RimTouch.AllowExtraUiScalesDesc".Translate());
@@ -57,7 +45,6 @@ namespace RimTouch
             }
             listing.Gap();
 
-            SectionHeader(listing, "RimTouch.SectionWorldMap");
             listing.CheckboxLabeled("RimTouch.EnableGlobeTwist".Translate(), ref Settings.enableGlobeTwist, "RimTouch.EnableGlobeTwistDesc".Translate());
             listing.Label("RimTouch.TwistCommitDegrees".Translate() + Settings.twistCommitDegrees.ToString("0") + "\u00b0");
             Settings.twistCommitDegrees = listing.Slider(Settings.twistCommitDegrees, 3f, 20f);
@@ -67,11 +54,9 @@ namespace RimTouch
             Settings.turntableDragSensitivity = listing.Slider(Settings.turntableDragSensitivity, 0.5f, 2f);
             listing.Label("RimTouch.TurntableDragSensitivityDesc".Translate());
             listing.CheckboxLabeled("RimTouch.InvertTurntableAxis".Translate(), ref Settings.invertTurntableAxis, "RimTouch.InvertTurntableAxisDesc".Translate());
-            listing.CheckboxLabeled("RimTouch.AutoLockNorthOnDrag".Translate(), ref Settings.autoLockNorthOnDrag, "RimTouch.AutoLockNorthOnDragDesc".Translate());
             listing.CheckboxLabeled("RimTouch.EnableWorldPointDrag".Translate(), ref Settings.enableWorldPointDrag, "RimTouch.EnableWorldPointDragDesc".Translate());
             listing.Gap();
 
-            SectionHeader(listing, "RimTouch.SectionInertia");
 
             listing.Label("RimTouch.PanInertiaStrength".Translate() + Settings.panInertiaStrength.ToString("0.00"));
             Settings.panInertiaStrength = listing.Slider(Settings.panInertiaStrength, 0f, 2f);
@@ -92,7 +77,6 @@ namespace RimTouch
             }
 
             listing.Gap();
-            SectionHeader(listing, "RimTouch.SectionZoomRange");
             listing.Label("RimTouch.ExtendedZoomRangeNote".Translate());
             bool extendedZoomEnabledBefore = Settings.extendedZoomEnabled;
             listing.CheckboxLabeled("RimTouch.EnableExtendedZoomRange".Translate(), ref Settings.extendedZoomEnabled, "RimTouch.EnableExtendedZoomRangeDesc".Translate());
@@ -161,7 +145,6 @@ namespace RimTouch
         public bool lockNorthUpOnDrag = true;
         public float turntableDragSensitivity = 1f;
         public bool invertTurntableAxis = false;
-        public bool autoLockNorthOnDrag = false;
         public bool enableWorldPointDrag = true;
         public bool allowExtraUiScales;
         public float panInertiaStrength = 1.05f;
@@ -171,7 +154,7 @@ namespace RimTouch
         public bool extendedZoomEnabled = RimTouchMod.DefaultExtendedZoomEnabled;
         public float extendedZoomInMin = RimTouchMod.DefaultExtendedZoomInMin;
         public float extendedZoomOutMax = RimTouchMod.DefaultExtendedZoomOutMax;
-        public int settingsVersion = 7;
+        public int settingsVersion = 8;
 
         public void ResetTouchTuning()
         {
@@ -196,7 +179,6 @@ namespace RimTouch
             Scribe_Values.Look(ref lockNorthUpOnDrag, "lockNorthUpOnDrag", true);
             Scribe_Values.Look(ref turntableDragSensitivity, "turntableDragSensitivity", 1f);
             Scribe_Values.Look(ref invertTurntableAxis, "invertTurntableAxis", false);
-            Scribe_Values.Look(ref autoLockNorthOnDrag, "autoLockNorthOnDrag", false);
             Scribe_Values.Look(ref enableWorldPointDrag, "enableWorldPointDrag", true);
             Scribe_Values.Look(ref allowExtraUiScales, "allowExtraUiScales", false);
             Scribe_Values.Look(ref panInertiaStrength, "panInertiaStrength", 1.05f);
@@ -230,7 +212,7 @@ namespace RimTouch
                         extendedZoomOutMax = RimTouchMod.DefaultExtendedZoomOutMax;
                     }
                 }
-                settingsVersion = 7;
+                settingsVersion = 8;
             }
         }
     }

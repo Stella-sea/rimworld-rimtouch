@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LanguageData>
-  <RimTouch.SectionTouch>Touch</RimTouch.SectionTouch>
-  <RimTouch.SectionWorldMap>World map</RimTouch.SectionWorldMap>
-  <RimTouch.SectionInertia>Inertia</RimTouch.SectionInertia>
-  <RimTouch.SectionZoomRange>Zoom range</RimTouch.SectionZoomRange>
   <RimTouch.EnableTouchMode>Enable touch mode</RimTouch.EnableTouchMode>
   <RimTouch.EnableTouchModeDesc>Enables RimTouch direct touch gestures and UI tap repair.</RimTouch.EnableTouchModeDesc>
   <RimTouch.Input>Input: </RimTouch.Input>
@@ -11,14 +7,12 @@
   <RimTouch.EnableGlobeTwistDesc>Turn two fingers to roll the world view. A deliberate twist releases the world's north-up lock. Use North-up in the world view to straighten it again.</RimTouch.EnableGlobeTwistDesc>
   <RimTouch.TwistCommitDegrees>Rotation trigger angle: </RimTouch.TwistCommitDegrees>
   <RimTouch.TwistCommitDegreesDesc>How far two fingers must twist (in degrees) before the globe starts rotating. Higher values make accidental rotation during pinch-zoom or drag much less likely; once a gesture is clearly a pinch or a drag, rotation is locked out for that gesture.</RimTouch.TwistCommitDegreesDesc>
-  <RimTouch.LockNorthUpOnDrag>Lock north up while dragging the globe</RimTouch.LockNorthUpOnDrag>
-  <RimTouch.LockNorthUpOnDragDesc>Dragging the globe with one finger no longer rolls the view: a straight drag only pans, and dragging in a circle does not spin it. North keeps whatever direction it had when the drag started (north-up stays north-up). Turn off to keep the free globe-spinning drag.</RimTouch.LockNorthUpOnDragDesc>
+  <RimTouch.LockNorthUpOnDrag>Dual-axis mode</RimTouch.LockNorthUpOnDrag>
+  <RimTouch.LockNorthUpOnDragDesc>Drag the globe with a two-axis turntable: horizontal drags spin around the north pole, vertical drags pitch around the screen's horizontal axis. The drag itself never rolls, so north keeps the heading it had when the drag started. Turn off for the free globe-spinning drag (the grabbed point follows the finger, roll included).</RimTouch.LockNorthUpOnDragDesc>
   <RimTouch.TurntableDragSensitivity>Turntable drag speed: </RimTouch.TurntableDragSensitivity>
-  <RimTouch.TurntableDragSensitivityDesc>How fast the globe turns when you drag with one finger (turntable mode only). 1.00x is the default; lower values make dragging slower and more precise, higher values make it faster. Only applies while 'Lock north up while dragging' is on.</RimTouch.TurntableDragSensitivityDesc>
+  <RimTouch.TurntableDragSensitivityDesc>How fast the globe turns when you drag with one finger (dual-axis mode only). 1.00x is the default; lower values make dragging slower and more precise, higher values make it faster. Only applies while 'Dual-axis mode' is on.</RimTouch.TurntableDragSensitivityDesc>
   <RimTouch.InvertTurntableAxis>Invert rotation axis</RimTouch.InvertTurntableAxis>
   <RimTouch.InvertTurntableAxisDesc>Flip the turntable drag direction: dragging right rotates the globe left, dragging up rotates it down. Off by default (dragging follows your finger). Turn on only if you prefer the old inverted direction.</RimTouch.InvertTurntableAxisDesc>
-  <RimTouch.AutoLockNorthOnDrag>Auto-lock north when a drag starts</RimTouch.AutoLockNorthOnDrag>
-  <RimTouch.AutoLockNorthOnDragDesc>When a one-finger drag starts on the globe, first snap the north back to screen-up, then drag. Lets you recover north-up just by dragging after a two-finger twist, without hunting for the toggle. Only applies while "Lock north up while dragging" is on.</RimTouch.AutoLockNorthOnDragDesc>
   <RimTouch.EnableWorldPointDrag>Point-and-drag to multi-select on the globe</RimTouch.EnableWorldPointDrag>
   <RimTouch.EnableWorldPointDragDesc>Double-tap, hold, then drag on the globe to draw a selection box and select every faction and settlement inside it, like dragging with a mouse. The box is drawn with an animated marching-ants border. Turn off to keep double-tap-hold-drag panning the globe instead.</RimTouch.EnableWorldPointDragDesc>
   <RimTouch.AllowExtraUiScales>Allow extra UI scales (advanced)</RimTouch.AllowExtraUiScales>

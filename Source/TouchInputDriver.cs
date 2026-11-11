@@ -779,9 +779,13 @@ namespace RimTouch
                         lastWorldPanSampleTime = startTime;
                         worldPanAnchorValid = ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(startGui, out worldPanAnchorPoint);
                         if (worldPanAnchorValid) UpdateWorldPanAnchorLocal();
-                        if (worldPanAnchorValid && LockNorthUpOnDragEnabled() && AutoLockNorthOnDragEnabled())
+                        if (!LockNorthUpOnDragEnabled() && Find.PlaySettings != null)
                         {
-                            SnapNorthToUp();
+                            // Dual-axis mode is off, so the vanilla drag is in charge:
+                            // re-engage the vanilla north-up lock. A two-finger twist
+                            // releases it (lockNorthUp = false), and without this a
+                            // single-finger drag after a twist would never get it back.
+                            Find.PlaySettings.lockNorthUp = true;
                         }
                         suppressReleaseTap = true;
                         SuppressUiClickFallout();
@@ -899,6 +903,10 @@ namespace RimTouch
                 {
                     StopInertia();
                     ClearInertiaSamples();
+                    // The twist rotated the sphere, so the sphere-local anchor
+                    // captured at gesture start is stale; refresh it so the pan
+                    // path keeps tracking the right geographic point.
+                    if (worldPanAnchorValid) UpdateWorldPanAnchorLocal();
                 }
                 CancelWorldDragBox();
             }

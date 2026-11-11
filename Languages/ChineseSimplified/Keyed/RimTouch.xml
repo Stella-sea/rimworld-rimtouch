@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LanguageData>
-  <RimTouch.SectionTouch>触控</RimTouch.SectionTouch>
-  <RimTouch.SectionWorldMap>世界地图</RimTouch.SectionWorldMap>
-  <RimTouch.SectionInertia>惯性</RimTouch.SectionInertia>
-  <RimTouch.SectionZoomRange>缩放范围</RimTouch.SectionZoomRange>
   <RimTouch.EnableTouchMode>启用触控模式</RimTouch.EnableTouchMode>
   <RimTouch.EnableTouchModeDesc>启用 RimTouch 直接触控手势与 UI 点按修复。</RimTouch.EnableTouchModeDesc>
   <RimTouch.Input>输入：</RimTouch.Input>
@@ -11,14 +7,12 @@
   <RimTouch.EnableGlobeTwistDesc>双指旋转可转动世界视图。一次明确的扭转会解除世界画面的“北向上”锁定，可在世界视图里用“北向上”把它扳正。</RimTouch.EnableGlobeTwistDesc>
   <RimTouch.TwistCommitDegrees>旋转触发角度：</RimTouch.TwistCommitDegrees>
   <RimTouch.TwistCommitDegreesDesc>双指扭转多少度才开始旋转。越大越难在缩放或拖动时误触；一旦手势被判定为缩放或拖动，本次手势内不再触发旋转。</RimTouch.TwistCommitDegreesDesc>
-  <RimTouch.LockNorthUpOnDrag>拖动地球时锁定正北方向</RimTouch.LockNorthUpOnDrag>
-  <RimTouch.LockNorthUpOnDragDesc>单指拖动地球时不再产生滚转：直线拖动只平移视野、原地画圈也不会让视野自旋；北向保持拖动开始时的朝向（已朝北则始终朝北）。关闭则恢复自由旋转的拖动。</RimTouch.LockNorthUpOnDragDesc>
+  <RimTouch.LockNorthUpOnDrag>双轴模式</RimTouch.LockNorthUpOnDrag>
+  <RimTouch.LockNorthUpOnDragDesc>单指拖动地球时用双轴转盘：横向拖动绕北极旋转、纵向拖动绕屏幕横轴俯仰，拖动本身不产生滚转，北向保持拖动开始时的朝向。关闭则恢复自由旋转的拖动（抓点跟随手指，含滚转）。</RimTouch.LockNorthUpOnDragDesc>
   <RimTouch.TurntableDragSensitivity>转盘拖动速度：</RimTouch.TurntableDragSensitivity>
-  <RimTouch.TurntableDragSensitivityDesc>单指拖动地球时转盘转多快（仅在锁定正北时生效）。1.00x 为默认；调小拖得更慢更精准，调大拖得更快。仅在“拖动地球时锁定正北方向”开启时生效。</RimTouch.TurntableDragSensitivityDesc>
+  <RimTouch.TurntableDragSensitivityDesc>单指拖动地球时转盘转多快（仅在双轴模式开启时生效）。1.00x 为默认；调小拖得更慢更精准，调大拖得更快。仅在“双轴模式”开启时生效。</RimTouch.TurntableDragSensitivityDesc>
   <RimTouch.InvertTurntableAxis>反转旋转轴</RimTouch.InvertTurntableAxis>
   <RimTouch.InvertTurntableAxisDesc>翻转转盘拖动方向：往右拖时地球往左转、往上拖时往下转。默认关闭（拖动跟随手指）。只有习惯旧的反向手感时才打开。</RimTouch.InvertTurntableAxisDesc>
-  <RimTouch.AutoLockNorthOnDrag>拖动开始时自动锁定北方</RimTouch.AutoLockNorthOnDrag>
-  <RimTouch.AutoLockNorthOnDragDesc>单指在地球上开始拖动时，先把北向转回正上方，再开始拖动。双指扭转把方向扭歪后，不用找开关，直接拖一下就能回正。仅在“拖动地球时锁定正北方向”开启时生效。</RimTouch.AutoLockNorthOnDragDesc>
   <RimTouch.EnableWorldPointDrag>点按拖动：在地球上多选</RimTouch.EnableWorldPointDrag>
   <RimTouch.EnableWorldPointDragDesc>在地球上双击后按住拖动，画出选择框，框住的政权与定居点都会被选中，和鼠标拖拽多选一样。选择框带行进蚁行动画边框。关闭后，双击按住拖动改为平移地球。</RimTouch.EnableWorldPointDragDesc>
   <RimTouch.AllowExtraUiScales>允许额外 UI 缩放（高级）</RimTouch.AllowExtraUiScales>

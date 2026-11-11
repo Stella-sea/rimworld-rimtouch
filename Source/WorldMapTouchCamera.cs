@@ -317,61 +317,6 @@ namespace RimTouch
             }
             return true;
         }
-        private static bool AutoLockNorthOnDragEnabled()
-        {
-            return RimTouchMod.Settings != null && RimTouchMod.Settings.autoLockNorthOnDrag;
-        }
-
-        // Snaps the north pole back to screen-up by rolling the sphere around the
-        // camera's forward (view) axis. Used by the "auto-lock north" setting: when a
-        // one-finger drag starts, the north is re-locked to up first, so a player who
-        // twisted the globe with two fingers can recover north-up just by dragging,
-        // without hunting for the toggle. A snap at drag start (not a per-frame
-        // correction) cannot fight the drag the way the old test5 correction did.
-        private static bool SnapNorthToUp()
-        {
-            WorldCameraDriver driver = Find.WorldCameraDriver;
-            if (driver == null || WorldCameraSphereRotationField == null)
-            {
-                return false;
-            }
-            Camera camera = GetWorldCamera(driver);
-            if (camera == null)
-            {
-                return false;
-            }
-            Quaternion sphereRotation;
-            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
-            {
-                return false;
-            }
-            Vector3 north = sphereRotation * Vector3.up;
-            Vector3 forward = camera.transform.forward;
-            Vector3 up = camera.transform.up;
-            Vector3 nProj = north - forward * Vector3.Dot(north, forward);
-            if (nProj.sqrMagnitude <= 0.0001f)
-            {
-                return true;
-            }
-            nProj.Normalize();
-            float tilt = Vector3.SignedAngle(up, nProj, forward);
-            if (Mathf.Abs(tilt) < 0.1f)
-            {
-                return true;
-            }
-            Quaternion correction = Quaternion.AngleAxis(-tilt, forward);
-            Quaternion newRotation = correction * sphereRotation;
-            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
-            {
-                return false;
-            }
-            SuppressWorldCameraEdgeScrollState(driver);
-            if (WorldCameraApplyPositionMethod != null)
-            {
-                ReflectionGuard.TryInvoke(WorldCameraApplyPositionMethod, driver, null);
-            }
-            return true;
-        }
         private static bool LockNorthUpOnDragEnabled()
         {
             return RimTouchMod.Settings != null && RimTouchMod.Settings.lockNorthUpOnDrag;
