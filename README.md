@@ -8,28 +8,6 @@ Upstream: https://github.com/iLtanaka/RimTouch. Original author: Tatsuki Tanaka.
 - Code license: GPL-3.0-or-later. See LICENSE.
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3827698857
 
-## Test releases (download here)
-
-Test builds are shipped as **GitHub Releases** in this fork — they do
-not expire, unlike the old file links. Always download from the
-Releases page:
-
-**https://github.com/Stella-sea/rimworld-rimtouch/releases**
-
-- Latest test build: **v0.2.0-test12** (2026-11-11, commit `dc20615`) —
-  flat settings page, dual-axis mode, jitter fix, vanilla north-lock
-  fix, debug-window scroll fix. See `CHANGELOG.md` for the full list
-  and the 7210 test checklist.
-- Each release asset is named `RimTouch-v<version>.zip` and contains a
-  single `RimTouch/` folder: extract it straight into
-  `RimWorld/Mods/` (disable the Workshop RimTouch first, enable
-  Harmony separately, enable only one RimTouch). The SHA256 in the
-  release notes identifies the exact build.
-- Version numbers follow `VERSIONING.md`: the mod version (e.g.
-  `v0.2.0-test12`) is independent of the game version (RimWorld 1.7);
-  `testN` builds are prereleases, a plain `v0.2.0` is stable and only
-  ships after approval on the 7210.
-
 ## Source release
 
 This is the selected production source and metadata snapshot, with game, Harmony and provider assemblies omitted. Original workspaces, installed mods, active lists and player saves are unchanged. This GitHub publication does not update Steam Workshop. See BUILD-STATUS.md for fresh compilation evidence and its limits.
@@ -40,7 +18,7 @@ Test builds are published as GitHub pre-releases on this fork (the Steam Worksho
 
 https://github.com/Stella-sea/rimworld-rimtouch/releases
 
-Each test build is tagged `v0.1.0-test.<N>` (a SemVer pre-release; the number continues the test1, test2, … series) and ships as `RimTouch-fix-test<N>.zip`. See [RELEASES.md](RELEASES.md) for the versioning and release scheme.
+Each test build is tagged `v0.1.0-test.<N>` (a SemVer pre-release; the number continues the test1, test2, … series) and ships as `RimTouch-fix-test<N>.zip` containing a single `RimTouch/` folder — extract it straight into `RimWorld/Mods/`. Latest: **test12** (2026-11-11, flat settings, dual-axis mode, jitter + north-lock fixes). See [RELEASES.md](RELEASES.md) for the versioning and release scheme and [CHANGELOG.md](CHANGELOG.md) for what changed and what to test.
 
 ## Build for 1.7
 

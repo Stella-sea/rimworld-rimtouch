@@ -6,7 +6,7 @@ Fixes # <!-- issue number -->
 
 ## Test builds
 
-<!-- If this is a test-line change, the version it will ship as (e.g. v0.2.0-test13) and the commit it was built from. -->
+<!-- If this is a test-line change, the version it will ship as (e.g. v0.1.0-test.13) and the commit it was built from. -->
 
 - [ ] Built with `Build17.ps1` / `build17.sh`: 0 diagnostics
 - [ ] DLL SHA256 recorded: `<!-- … -->`

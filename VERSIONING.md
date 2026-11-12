@@ -1,50 +1,53 @@
 # Versioning and releases — RimTouch fork (Stella-sea/rimworld-rimtouch)
 
-How this fork numbers versions and ships test builds, following the
-conventions mature projects use (SemVer tags + GitHub Releases +
-CHANGELOG). Read this before cutting a release.
+The release scheme is defined in `RELEASES.md` (user-facing: where
+builds live, how to cut one). This file is the companion detail:
+the reasoning behind the scheme, the things `RELEASES.md` does not
+spell out, and the packaging script. If the two ever disagree,
+`RELEASES.md` wins and this file gets fixed — that happened once
+already, when a parallel draft used `v0.2.0-test12` and was corrected
+to the scheme below.
+
+## The scheme (summary — see RELEASES.md for the full text)
+
+- **Tags:** `v0.1.0-test.<N>` — e.g. `v0.1.0-test.12`. `0.1.0` is the
+  next stable version this work is heading toward (`0.x` = pre-stable);
+  the test builds are its prereleases. The stable release drops the
+  suffix: `v0.1.0`.
+- **The dot in `test.12` is load-bearing.** SemVer compares
+  dot-separated numeric identifiers numerically, so `test.12` sorts
+  after `test.9`. A single suffix like `test12` would sort lexically
+  (`test12` < `test9`) and break ordering. Do not use the `testN`
+  form in tags.
+- **`About/About.xml` carries the same version** (without the `v`
+  prefix) in `<modVersion>` — `0.1.0-test.12`. This is the version
+  RimWorld shows in the mod list, so the in-game version always
+  matches the release tag. Bump `<modVersion>` in the same commit
+  series as the release; never ship a tag whose `modVersion` says
+  something else.
+- **Assets keep the established filename** `RimTouch-fix-test<N>.zip`
+  (the name she already knows from test1–test12). The zip contains a
+  single root folder `RimTouch/` — extract straight into
+  `RimWorld/Mods/` — which the old loose-file zips did not.
+- Every test build is a GitHub **prerelease**, never a stable /
+  "latest" release. Tags are immutable: never move, delete or reuse
+  one. Never reuse a `test.<N>` number.
 
 ## Two different "1.7"s — do not confuse them
 
 - **RimWorld 1.7** is the *game* version. It lives in
   `About/About.xml` (`<supportedVersions><li>1.7</li></supportedVersions>`)
   and never changes with our fixes.
-- **The mod version** (e.g. `v0.2.0-test12`) is *our* version, independent
-  of the game version. It lives in the git tag, the release name, the zip
-  filename and `CHANGELOG.md`. It is deliberately **not** written into
-  `About/About.xml`: the in-game "测试版" marker already tells test
-  builds apart, and editing `About.xml` for every test build would churn
-  the one file RimWorld reads to identify the mod. If a stable release
-  ever wants the version visible in-game, that is a separate, deliberate
-  change — not something a test build does silently.
+- **The mod version** (`0.1.0-test.12`) is *our* version, independent
+  of the game version. It lives in the git tag, `<modVersion>`, the
+  release name and `CHANGELOG.md`.
 
-## Scheme: SemVer, with test builds as prereleases
+## `settingsVersion` is not the mod version
 
-Tags are `vMAJOR.MINOR.PATCH[-PRERELEASE]`, e.g.:
-
-| Tag | Meaning |
-| --- | --- |
-| `v0.1.0` | Baseline: the upstream SewSekSea snapshot as published on `main` (`e7e3547`), no fixes yet. Tagged retroactively so the baseline is addressable. |
-| `v0.2.0-test12` | 12th test build of the `0.2.0` line: all fixes on `fix/touch-issues` up to `dc20615`. A GitHub **prerelease** (not a stable release). |
-| `v0.2.0-test13`, `v0.2.0-test14`, … | Later test builds on the same line. Only the prerelease number moves. |
-| `v0.2.0` | Stable: cut only after StellaSea has approved the build on her 7210 **and** the upstream issue → PR flow has been followed (see CONTRIBUTING.md). |
-
-Rules, borrowed from SemVer / Keep a Changelog practice:
-
-- `PATCH` — bug fixes only, no new settings or behaviour.
-- `MINOR` — new features / new settings (e.g. dual-axis mode, turntable
-  speed slider, multi-select). The `0.1.0` → `0.2.0` jump is a minor
-  bump for exactly this reason.
-- `MAJOR` — breaking changes (settings save format, packageId, dropping
-  a RimWorld version). `0.x` is still pre-stable, so treat `MINOR` bumps
-  as potentially breaking until `1.0.0`.
-- Prerelease identifiers are `testN`, continuing the `test1…test12`
-  numbering she already knows. Never reuse a `testN` number, never
-  move a tag after the zip has been downloaded, and never rewrite a
-  tag to a different commit — if a build is wrong, cut `testN+1`.
-- `settingsVersion` in `Source/RimTouchMod.cs` is a *save-migration*
-  counter, not the mod version. It only moves when a settings default
-  or migration needs it (currently 8). Do not bump it to match a tag.
+`settingsVersion` in `Source/RimTouchMod.cs` is a *save-migration*
+counter, not the mod version. It only moves when a settings default
+or migration needs it (currently 8). Do not bump it to match a tag,
+and do not read a tag off it.
 
 ## Branches
 
@@ -55,56 +58,46 @@ Rules, borrowed from SemVer / Keep a Changelog practice:
   set on 2026-11-07: issue, then PR, only with her approval. A GitHub
   Release in this fork does **not** update Steam Workshop.
 
-## Release checklist (what "doing a release" means here)
+## Packaging
 
-1. Code is committed on `fix/touch-issues`; build with `build17.sh`
-   (Linux) or `Build17.ps1` (Windows) — 0 diagnostics.
-2. Run the simulation suites (`twist-test/`, `globe-test/`,
-   `anchor-test/`) and record the result in the release notes.
-3. Add a `CHANGELOG.md` entry for the new version (date, commit,
-   what changed, what still needs her 7210 test).
-4. Package with `scripts/package-release.sh <version>` — it builds
-   `RimTouch-v<version>.zip` with a single root folder `RimTouch/`
-   (extract straight into `RimWorld/Mods/`), verifies the DLL hash
-   matches the fresh build, and prints the SHA256.
-5. Create an **annotated** tag and push it:
-   `git tag -a v0.2.0-test12 -m "…" && git push origin v0.2.0-test12`
-6. Create the GitHub Release from that tag, **mark it as a
-   prerelease**, attach the zip, and paste the SHA256 + test checklist
-   into the release notes:
-   `gh release create v0.2.0-test12 --prerelease --title "v0.2.0-test12" --notes-file <notes> RimTouch-v0.2.0-test12.zip`
-   (The release notes template lives in the tag message; see below.)
-7. Send her the Releases page link, not a file link:
-   `https://github.com/Stella-sea/rimworld-rimtouch/releases`
-   — GitHub Releases do not expire, unlike the old `muse.ai` file
-   links (which expired after ~24h).
+`scripts/package-release.sh <version>` builds the release asset from
+a staging directory (default: `staging-0.1.0-test.12` under the
+research workspace, built from the tagged tree + the fresh DLL) — `RimTouch-fix-test<N>.zip` with a single root
+folder `RimTouch/`. It verifies the staged DLL hash matches the fresh
+local build in `.build/1.7/RimTouch.dll` and that `About.xml` carries
+the right `packageId` and `supportedVersions`, then prints the zip
+SHA256 for the release notes. If the DLL hashes differ, it stops:
+the zip must be the build from the tagged commit, not a stale DLL.
 
 ## Why there is no CI build
 
 GitHub Actions cannot build this mod: compiling needs the licensed
-RimWorld 1.7 assemblies and the Harmony DLL, which are proprietary and
-cannot live in the repo or in CI. So the release workflow
-(`.github/workflows/release-tag-check.yml`) only validates the tag —
-it checks the tag is valid SemVer and that `CHANGELOG.md` has an entry
-for it. The build evidence is the local deterministic build: the DLL
-SHA256 recorded in the release notes must match a rebuild from the
-tagged commit. Do not claim CI built anything.
+RimWorld 1.7 assemblies and the Harmony DLL, which are proprietary
+and cannot live in the repo or in CI. The workflow in
+`.github/workflows/release-tag-check.yml` therefore only validates
+release hygiene on tag push — SemVer tag shape, a `CHANGELOG.md`
+entry for the version, and that the tag is annotated. (It is not a
+build workflow, and `.github/release.yml` is only the config for
+auto-generated release-note categories, not a workflow either.)
+Build evidence is the local deterministic build: the DLL SHA256 in
+the release notes must match a rebuild from the tagged commit.
 
 ## Tag message template (test release)
 
 ```
-v0.2.0-test12 — test build 12 (prerelease)
+Test 12: flat settings, dual-axis rename, jitter + north-lock fixes
 
-Commit: dc20615
-Built: 2026-11-11, .NET SDK 10.0.403, 0 diagnostics
+Commit: dc20615 (+ release docs)
+Built: 2026-11-12, .NET SDK 10.0.403, 0 diagnostics
 DLL SHA256: afb9c4e105f6fe59f7afd441101138b2199ebb3b7391517a2fd57d1e2748742f
 Simulations: twist 9/9, globe 15/15
-Test on 7210: settings page flat + renamed to 双轴模式; single-finger
-globe drag with dual-axis on (jitter?); vanilla north-lock returns
-after two-finger twist with dual-axis off; debug-window scroll.
+Test on 7210: settings page flat + renamed to dual-axis mode;
+single-finger globe drag with dual-axis on (jitter?); vanilla
+north-lock returns after two-finger twist with dual-axis off;
+debug-window scroll.
 ```
 
-## History of the old way (why this file exists)
+## History of the old way (why these files exist)
 
 Before 2026-11-12, test builds went out as `RimTouch-fix-testN.zip`
 through expiring `muse.ai` file links, with loose files at the zip

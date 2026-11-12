@@ -23,8 +23,8 @@ not negotiable without her say-so.
 
 - `main` is the stable baseline. Work on `fix/touch-issues` (or a
   new branch per change set).
-- Versions follow `VERSIONING.md` (SemVer; test builds are
-  prereleases `v0.2.0-testN`). Never move or reuse a tag.
+- Versions follow `RELEASES.md` and `VERSIONING.md` (SemVer; test builds are
+  prereleases `v0.1.0-test.<N>`). Never move or reuse a tag.
 - Every release gets a `CHANGELOG.md` entry first. No changelog,
   no release.
 - The in-game "测试版" marker (`Languages/ChineseSimplified/About/`
