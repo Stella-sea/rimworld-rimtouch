@@ -1,0 +1,28 @@
+# Changelog categories for auto-generated release notes
+# (gh release create --generate-notes). Test releases still get hand-written
+# notes — see RELEASES.md — this only shapes the auto-generated starting point.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: Features
+      labels:
+        - feat
+        - feature
+    - title: Bug Fixes
+      labels:
+        - fix
+        - bugfix
+    - title: Tests
+      labels:
+        - test
+    - title: Other Changes
+      labels:
+        - chore
+        - docs
+        - refactor
+        - style
+        - ci
+        - build
+        - perf
