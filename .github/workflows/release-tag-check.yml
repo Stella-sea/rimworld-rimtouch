@@ -1,0 +1,35 @@
+name: release-tag-check
+
+# Runs when a version tag is pushed. This repo cannot CI-build the mod:
+# compiling needs the licensed RimWorld 1.7 assemblies and the Harmony
+# DLL, which must not live in the repo or in CI (see VERSIONING.md).
+# So this workflow only validates the release hygiene — the build
+# evidence is the local deterministic build whose DLL SHA256 is
+# recorded in the release notes.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  check-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag must be SemVer, optionally a -testN prerelease
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "tag: $TAG"
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-test[0-9]+)?$' \
+            || { echo "tag $TAG is not vMAJOR.MINOR.PATCH[-testN] (see VERSIONING.md)" >&2; exit 1; }
+      - name: CHANGELOG must have an entry for this version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -q "^\#\# \[$VERSION\]" CHANGELOG.md \
+            || { echo "CHANGELOG.md has no '## [$VERSION]' entry" >&2; exit 1; }
+      - name: Tag must be annotated
+        run: |
+          git cat-file -t "${GITHUB_REF_NAME}" | grep -q '^tag$' \
+            || { echo "tag ${GITHUB_REF_NAME} is lightweight; use git tag -a (see VERSIONING.md)" >&2; exit 1; }
