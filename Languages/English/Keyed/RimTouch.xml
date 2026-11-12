@@ -9,6 +9,10 @@
   <RimTouch.TwistCommitDegreesDesc>How far two fingers must twist (in degrees) before the globe starts rotating. Higher values make accidental rotation during pinch-zoom or drag much less likely; once a gesture is clearly a pinch or a drag, rotation is locked out for that gesture.</RimTouch.TwistCommitDegreesDesc>
   <RimTouch.LockNorthUpOnDrag>Dual-axis mode</RimTouch.LockNorthUpOnDrag>
   <RimTouch.LockNorthUpOnDragDesc>Drag the globe with a two-axis turntable: horizontal drags spin around the north pole, vertical drags pitch around the screen's horizontal axis. The drag itself never rolls, so north keeps the heading it had when the drag started. Turn off for the free globe-spinning drag (the grabbed point follows the finger, roll included).</RimTouch.LockNorthUpOnDragDesc>
+  <RimTouch.AutoReturnNorth>Auto-return to north (dual-axis off)</RimTouch.AutoReturnNorth>
+  <RimTouch.AutoReturnNorthDesc>When dual-axis mode is off, slowly rotate the globe back to north-up when you start a single-finger drag. Off: the view stays where the two-finger twist left it, with no automatic return.</RimTouch.AutoReturnNorthDesc>
+  <RimTouch.NorthReturnDuration>Return-to-north duration: </RimTouch.NorthReturnDuration>
+  <RimTouch.NorthReturnDurationDesc>How long the smooth return to north-up takes, in seconds. Lower is snappier, higher is gentler. Only applies while 'Auto-return to north' is on.</RimTouch.NorthReturnDurationDesc>
   <RimTouch.TurntableDragSensitivity>Turntable drag speed: </RimTouch.TurntableDragSensitivity>
   <RimTouch.TurntableDragSensitivityDesc>How fast the globe turns when you drag with one finger (dual-axis mode only). 1.00x is the default; lower values make dragging slower and more precise, higher values make it faster. Only applies while 'Dual-axis mode' is on.</RimTouch.TurntableDragSensitivityDesc>
   <RimTouch.InvertTurntableAxis>Invert rotation axis</RimTouch.InvertTurntableAxis>

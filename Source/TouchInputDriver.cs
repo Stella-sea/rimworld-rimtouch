@@ -446,6 +446,11 @@ namespace RimTouch
                     return;
                 }
 
+                // Smooth return-to-north (dual-axis off): runs every frame,
+                // also after the finger lifts, until the view is aligned
+                // and the vanilla lock takes over again.
+                UpdateNorthReturn();
+
                 int touchCount = TouchSource.Count;
                 if (touchCount <= 0)
                 {
@@ -551,6 +556,7 @@ namespace RimTouch
             // Cancellation must not flow through FinishTouch or disappearance
             // finalization: those can select, order, or queue a UI tap.
             StopInertia();
+            CancelNorthReturn();
             StopUiScrollInertia();
             ClearInertiaSamples();
             ResetState();
@@ -779,13 +785,32 @@ namespace RimTouch
                         lastWorldPanSampleTime = startTime;
                         worldPanAnchorValid = ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(startGui, out worldPanAnchorPoint);
                         if (worldPanAnchorValid) UpdateWorldPanAnchorLocal();
-                        if (!LockNorthUpOnDragEnabled() && Find.PlaySettings != null)
+                        if (LockNorthUpOnDragEnabled())
+                        {
+                            // Dual-axis mode: the projected turntable is roll-free by
+                            // construction, so the vanilla north-up lock must stay off
+                            // while dragging. If it is on, the vanilla driver snaps
+                            // the rotation to north-up every frame
+                            // (RotateSoNorthIsUp(interpolate: false)) and fights the
+                            // turntable's anchor feedback loop - that fight is the
+                            // dual-axis jitter test12 did not fix (the lock was left
+                            // on by an earlier dual-axis-off drag or the default).
+                            if (Find.PlaySettings != null)
+                            {
+                                Find.PlaySettings.lockNorthUp = false;
+                            }
+                            CancelNorthReturn();
+                        }
+                        else
                         {
                             // Dual-axis mode is off, so the vanilla drag is in charge:
                             // re-engage the vanilla north-up lock. A two-finger twist
                             // releases it (lockNorthUp = false), and without this a
                             // single-finger drag after a twist would never get it back.
-                            Find.PlaySettings.lockNorthUp = true;
+                            // test13: return smoothly (exponential approach over the
+                            // configured duration) instead of the test12 instant snap,
+                            // and only when the auto-return toggle is on.
+                            BeginNorthReturnIfNeeded();
                         }
                         suppressReleaseTap = true;
                         SuppressUiClickFallout();
@@ -858,6 +883,10 @@ namespace RimTouch
                     return;
                 }
                 mode = TouchMode.TwoFinger;
+                // A two-finger gesture takes over the rotation (twist /
+                // pinch); stop any smooth north return so it cannot fight
+                // the gesture.
+                CancelNorthReturn();
                 GlobeTwist.Reset();
                 GlobeTwist.CommitDegrees = RimTouchMod.Settings != null ? RimTouchMod.Settings.twistCommitDegrees : 10f;
                 GlobeTwist.Update(guiA.x, guiA.y, guiB.x, guiB.y);
@@ -906,6 +935,12 @@ namespace RimTouch
                     // The twist rotated the sphere, so the sphere-local anchor
                     // captured at gesture start is stale; refresh it so the pan
                     // path keeps tracking the right geographic point.
+                    // Re-raycast at the CURRENT midpoint: recomputing the local
+                    // anchor from the pre-twist world point would pin a
+                    // different geographic point (the old point under the new
+                    // rotation), so the pan would chase the wrong spot and
+                    // drift after every twist.
+                    worldPanAnchorValid = ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(mid, out worldPanAnchorPoint);
                     if (worldPanAnchorValid) UpdateWorldPanAnchorLocal();
                 }
                 CancelWorldDragBox();
@@ -1019,6 +1054,18 @@ namespace RimTouch
 
         private static bool TryJumpToColonistBarTouchDoubleTap(Vector2 gui)
         {
+            // Entry-screen guard (same class of bug as the test3
+            // IsVanillaMapToolActive guard): Find.ColonistBar goes through
+            // Find.MapUI, which casts Find.UIRoot to UIRoot_Play in 1.7.
+            // On entry screens (main menu, world creation / landing-site
+            // selection) the root is UIRoot_Entry, so touching it throws
+            // InvalidCastException and kills the whole touch update. The
+            // colonist bar only exists in play, so bail out first.
+            if (Current.ProgramState != ProgramState.Playing || !(Find.UIRoot is UIRoot_Play))
+            {
+                return false;
+            }
+
             ColonistBar colonistBar = Find.ColonistBar;
             if (colonistBar == null)
             {

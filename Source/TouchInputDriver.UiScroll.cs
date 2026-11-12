@@ -63,7 +63,26 @@ namespace RimTouch
             Vector2 previousGui = uiScrollGestureActive ? uiScrollLastGui : gui - reportedGuiDelta;
             if (!uiScrollGestureActive)
             {
-                if (!IsTouchOverScrollRect(outRect, gui, previousGui) || Vector2.Distance(gui, startGui) <= DragSlopPixels)
+                if (!IsTouchOverScrollRect(outRect, gui, previousGui))
+                {
+                    return false;
+                }
+
+                // The scroll is normally claimed once the finger has moved
+                // past the 18px drag slop. But a slider under the finger
+                // reads every MouseDrag before that, so a vertical scroll
+                // that starts on a horizontal slider changes the slider's
+                // value during the first 18px (the test8 fix only consumed
+                // drags AFTER the claim, so it never closed this gap).
+                // Claim the scroll early once the drag direction is clearly
+                // along a scrollable axis: a mostly-vertical drag on a
+                // vertically scrolling view (or mostly-horizontal on a
+                // horizontally scrolling view) is a scroll, not a slider
+                // drag, so the slider must not see it. A drag along the
+                // slider's own axis is left alone for the slider.
+                Vector2 dragFromStart = gui - startGui;
+                bool directionClaim = IsScrollDirectionDrag(maxX, maxY, dragFromStart);
+                if (!directionClaim && Vector2.Distance(gui, startGui) <= DragSlopPixels)
                 {
                     return false;
                 }
@@ -146,6 +165,28 @@ namespace RimTouch
                 return true;
             }
 
+            return false;
+        }
+
+        // True when the drag from the touch start is clearly a scroll along
+        // one of this view's scrollable axes, so the scroll can be claimed
+        // before the full 18px drag slop (a slider under the finger would
+        // otherwise eat the drag). The drag must be mostly along a
+        // scrollable axis (dominant component at least 1.5x the other) and
+        // past the small movement slop, so a deliberate slider drag along
+        // the slider's own axis is never stolen.
+        private static bool IsScrollDirectionDrag(float maxX, float maxY, Vector2 dragFromStart)
+        {
+            float absX = Mathf.Abs(dragFromStart.x);
+            float absY = Mathf.Abs(dragFromStart.y);
+            if (maxY > 1f && absY > MovementDetectionSlopPixels && absY > absX * 1.5f)
+            {
+                return true;
+            }
+            if (maxX > 1f && absX > MovementDetectionSlopPixels && absX > absY * 1.5f)
+            {
+                return true;
+            }
             return false;
         }
 

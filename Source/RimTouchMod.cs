@@ -50,6 +50,10 @@ namespace RimTouch
             Settings.twistCommitDegrees = listing.Slider(Settings.twistCommitDegrees, 3f, 20f);
             listing.Label("RimTouch.TwistCommitDegreesDesc".Translate());
             listing.CheckboxLabeled("RimTouch.LockNorthUpOnDrag".Translate(), ref Settings.lockNorthUpOnDrag, "RimTouch.LockNorthUpOnDragDesc".Translate());
+            listing.CheckboxLabeled("RimTouch.AutoReturnNorth".Translate(), ref Settings.autoReturnNorth, "RimTouch.AutoReturnNorthDesc".Translate());
+            listing.Label("RimTouch.NorthReturnDuration".Translate() + Settings.northReturnDuration.ToString("0.00") + "s");
+            Settings.northReturnDuration = listing.Slider(Settings.northReturnDuration, 0.3f, 2f);
+            listing.Label("RimTouch.NorthReturnDurationDesc".Translate());
             listing.Label("RimTouch.TurntableDragSensitivity".Translate() + Settings.turntableDragSensitivity.ToString("0.00") + "x");
             Settings.turntableDragSensitivity = listing.Slider(Settings.turntableDragSensitivity, 0.5f, 2f);
             listing.Label("RimTouch.TurntableDragSensitivityDesc".Translate());
@@ -143,6 +147,8 @@ namespace RimTouch
         public bool enableGlobeTwist = true;
         public float twistCommitDegrees = 10f;
         public bool lockNorthUpOnDrag = true;
+        public bool autoReturnNorth = true;
+        public float northReturnDuration = 0.8f;
         public float turntableDragSensitivity = 1f;
         public bool invertTurntableAxis = false;
         public bool enableWorldPointDrag = true;
@@ -154,7 +160,7 @@ namespace RimTouch
         public bool extendedZoomEnabled = RimTouchMod.DefaultExtendedZoomEnabled;
         public float extendedZoomInMin = RimTouchMod.DefaultExtendedZoomInMin;
         public float extendedZoomOutMax = RimTouchMod.DefaultExtendedZoomOutMax;
-        public int settingsVersion = 8;
+        public int settingsVersion = 9;
 
         public void ResetTouchTuning()
         {
@@ -177,6 +183,8 @@ namespace RimTouch
             Scribe_Values.Look(ref enableGlobeTwist, "enableGlobeTwist", true);
             Scribe_Values.Look(ref twistCommitDegrees, "twistCommitDegrees", 10f);
             Scribe_Values.Look(ref lockNorthUpOnDrag, "lockNorthUpOnDrag", true);
+            Scribe_Values.Look(ref autoReturnNorth, "autoReturnNorth", true);
+            Scribe_Values.Look(ref northReturnDuration, "northReturnDuration", 0.8f);
             Scribe_Values.Look(ref turntableDragSensitivity, "turntableDragSensitivity", 1f);
             Scribe_Values.Look(ref invertTurntableAxis, "invertTurntableAxis", false);
             Scribe_Values.Look(ref enableWorldPointDrag, "enableWorldPointDrag", true);
@@ -212,7 +220,7 @@ namespace RimTouch
                         extendedZoomOutMax = RimTouchMod.DefaultExtendedZoomOutMax;
                     }
                 }
-                settingsVersion = 8;
+                settingsVersion = 9;
             }
         }
     }

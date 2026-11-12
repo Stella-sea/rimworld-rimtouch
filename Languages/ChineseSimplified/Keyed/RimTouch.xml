@@ -9,6 +9,10 @@
   <RimTouch.TwistCommitDegreesDesc>双指扭转多少度才开始旋转。越大越难在缩放或拖动时误触；一旦手势被判定为缩放或拖动，本次手势内不再触发旋转。</RimTouch.TwistCommitDegreesDesc>
   <RimTouch.LockNorthUpOnDrag>双轴模式</RimTouch.LockNorthUpOnDrag>
   <RimTouch.LockNorthUpOnDragDesc>单指拖动地球时用双轴转盘：横向拖动绕北极旋转、纵向拖动绕屏幕横轴俯仰，拖动本身不产生滚转，北向保持拖动开始时的朝向。关闭则恢复自由旋转的拖动（抓点跟随手指，含滚转）。</RimTouch.LockNorthUpOnDragDesc>
+  <RimTouch.AutoReturnNorth>自动回正到北方（双轴模式关闭时）</RimTouch.AutoReturnNorth>
+  <RimTouch.AutoReturnNorthDesc>双轴模式关闭时，单指拖动开始时缓慢将地球转回正北方向。关闭后，视角保持在双指旋转后的方向，不再自动回正。</RimTouch.AutoReturnNorthDesc>
+  <RimTouch.NorthReturnDuration>回正到北方所需时间：</RimTouch.NorthReturnDuration>
+  <RimTouch.NorthReturnDurationDesc>平滑回正到正北方向所需的时间（秒）。数值越小回正越快，越大越平缓。仅在“自动回正到北方”开启时生效。</RimTouch.NorthReturnDurationDesc>
   <RimTouch.TurntableDragSensitivity>转盘拖动速度：</RimTouch.TurntableDragSensitivity>
   <RimTouch.TurntableDragSensitivityDesc>单指拖动地球时转盘转多快（仅在双轴模式开启时生效）。1.00x 为默认；调小拖得更慢更精准，调大拖得更快。仅在“双轴模式”开启时生效。</RimTouch.TurntableDragSensitivityDesc>
   <RimTouch.InvertTurntableAxis>反转旋转轴</RimTouch.InvertTurntableAxis>

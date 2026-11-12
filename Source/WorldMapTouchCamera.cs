@@ -322,6 +322,122 @@ namespace RimTouch
             return RimTouchMod.Settings != null && RimTouchMod.Settings.lockNorthUpOnDrag;
         }
 
+        // Smooth return-to-north (test13, dual-axis off). The test12 instant
+        // snap (setting lockNorthUp = true at drag start, which makes the
+        // vanilla driver call RotateSoNorthIsUp(interpolate: false) every
+        // frame) jumped straight to north and stuttered. Industry practice
+        // for re-orienting a camera to north is an eased animation, not a
+        // jump: Google Maps animates the camera (animateCamera with a
+        // duration and an easeInOut interpolator) and never snaps the
+        // heading; Unity's standard is a Slerp / critically-damped
+        // approach toward the target orientation. This follows that: an
+        // exponential approach of the sphere rotation toward the north-up
+        // rotation, recomputed from the CURRENT rotation every frame, so
+        // the return composes with an ongoing pan (hand-following) instead
+        // of fighting it. Once aligned, the vanilla lock takes over.
+        private static bool northReturnActive;
+        private const float NorthReturnFinishDegrees = 0.5f;
+
+        // The north-up rotation for the current view: same formula as
+        // vanilla WorldCameraDriver.RotateSoNorthIsUp - the sphere rotation
+        // that is north-up while looking at the same point.
+        private static Quaternion ComputeNorthUpRotation(Quaternion sphereRotation)
+        {
+            return Quaternion.Inverse(Quaternion.LookRotation(Quaternion.Inverse(sphereRotation) * Vector3.forward));
+        }
+
+        private static void BeginNorthReturnIfNeeded()
+        {
+            if (RimTouchMod.Settings == null || !RimTouchMod.Settings.autoReturnNorth)
+            {
+                return;
+            }
+            WorldCameraDriver driver = Find.WorldCameraDriver;
+            if (driver == null || WorldCameraSphereRotationField == null || Find.PlaySettings == null)
+            {
+                return;
+            }
+            if (Find.PlaySettings.lockNorthUp)
+            {
+                return;
+            }
+            Quaternion sphereRotation;
+            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
+            {
+                return;
+            }
+            if (Quaternion.Angle(sphereRotation, ComputeNorthUpRotation(sphereRotation)) <= NorthReturnFinishDegrees)
+            {
+                Find.PlaySettings.lockNorthUp = true;
+                return;
+            }
+            northReturnActive = true;
+        }
+
+        private static void UpdateNorthReturn()
+        {
+            if (!northReturnActive)
+            {
+                return;
+            }
+            if (LockNorthUpOnDragEnabled()
+                || RimTouchMod.Settings == null || !RimTouchMod.Settings.autoReturnNorth
+                || !IsWorldMapActive())
+            {
+                northReturnActive = false;
+                return;
+            }
+            WorldCameraDriver driver = Find.WorldCameraDriver;
+            if (driver == null || WorldCameraSphereRotationField == null || Find.PlaySettings == null)
+            {
+                northReturnActive = false;
+                return;
+            }
+            if (Find.PlaySettings.lockNorthUp)
+            {
+                northReturnActive = false;
+                return;
+            }
+            Quaternion sphereRotation;
+            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
+            {
+                northReturnActive = false;
+                return;
+            }
+            Quaternion target = ComputeNorthUpRotation(sphereRotation);
+            if (Quaternion.Angle(sphereRotation, target) <= NorthReturnFinishDegrees)
+            {
+                Find.PlaySettings.lockNorthUp = true;
+                northReturnActive = false;
+                return;
+            }
+            // Exponential approach: move a frame-rate-independent fraction
+            // of the remaining error each frame. tau is chosen so the
+            // return is ~95% complete after the configured duration.
+            // The target is recomputed from the CURRENT rotation each
+            // frame, so the return follows a pan instead of fighting it.
+            float duration = RimTouchMod.Settings.northReturnDuration;
+            float tau = Mathf.Max(duration / 3f, 0.05f);
+            float dt = Mathf.Max(Time.unscaledDeltaTime, 0f);
+            float t = 1f - Mathf.Exp(-dt / tau);
+            Quaternion next = Quaternion.Slerp(sphereRotation, target, t);
+            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, next))
+            {
+                northReturnActive = false;
+                return;
+            }
+            SuppressWorldCameraEdgeScrollState(driver);
+            if (WorldCameraApplyPositionMethod != null)
+            {
+                ReflectionGuard.TryInvoke(WorldCameraApplyPositionMethod, driver, null);
+            }
+        }
+
+        private static void CancelNorthReturn()
+        {
+            northReturnActive = false;
+        }
+
         // Turntable drag (Blender's default orbit, Fusion360 Constrained Orbit,
         // Google Maps): the finger's screen movement rotates the globe around two
         // axes only - the current north pole (horizontal drag spins the globe like
@@ -432,8 +548,15 @@ namespace RimTouch
             }
             Vector3 omega = axis.normalized * (angleDeg * Mathf.Deg2Rad);
             Vector3 omegaTurn = north * Vector3.Dot(omega, north) + pitchAxis * Vector3.Dot(omega, pitchAxis);
+            // The projected turntable is a feedback loop: omegaTurn is the
+            // EXACT rotation that puts the grabbed point under the finger.
+            // Scaling it by a sensitivity above 1 overshoots the finger
+            // every frame and the loop oscillates (jitter). Clamp the gain
+            // to 1 so the loop can never overshoot; below 1 it just tracks
+            // more lazily, which stays stable. (The fixed-k fallback is
+            // open-loop, so it keeps the full sensitivity range.)
             float sensitivity = RimTouchMod.Settings != null ? RimTouchMod.Settings.turntableDragSensitivity : 1f;
-            float turnAngleDeg = omegaTurn.magnitude * Mathf.Rad2Deg * sensitivity;
+            float turnAngleDeg = omegaTurn.magnitude * Mathf.Rad2Deg * Mathf.Min(sensitivity, 1f);
             if (turnAngleDeg <= 0.001f)
             {
                 return true;
