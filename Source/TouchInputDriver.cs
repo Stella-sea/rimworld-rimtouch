@@ -95,6 +95,8 @@ namespace RimTouch
         private static Vector2 startGui;
         private static Vector2 lastGui;
         private static Vector3 startMap;
+        private static bool gestureIsWorld;
+        private static Map gestureMap;
         private static Vector3 panAnchorMap;
         private static Vector3 twoFingerPanAnchorMap;
         private static float startTime;
@@ -427,10 +429,23 @@ namespace RimTouch
             }
         }
 
+        private static bool CheckGestureViewIdentity()
+        {
+            return mode == TouchMode.None
+                || (IsWorldMapActive() == gestureIsWorld && Find.CurrentMap == gestureMap);
+        }
+
         public static void Update()
         {
             try
             {
+                if (!CheckGestureViewIdentity())
+                {
+                    AbortTouchInput();
+                    ignoreTouchesUntilAllReleased = true;
+                    return;
+                }
+
                 TouchSource.Update(TouchModeEnabled);
                 if (lastBackendStatus != TouchSource.Status)
                 {
@@ -523,6 +538,8 @@ namespace RimTouch
                 lastTouchFrame = Time.frameCount;
                 lastUpdateTime = Time.realtimeSinceStartup;
 
+                if (ignoreTouchesUntilAllReleased && mode == TouchMode.None) return;
+
                 if (touchCount >= 2)
                 {
                     lastMultiTouchFrame = Time.frameCount;
@@ -593,6 +610,8 @@ namespace RimTouch
                 primaryFingerId = touch.fingerId;
                 startGui = gui;
                 lastGui = gui;
+                gestureIsWorld = IsWorldMapActive();
+                gestureMap = Find.CurrentMap;
                 startMap = IsWorldMapActive() ? Vector3.zero : (Find.CurrentMap != null ? GuiToMapPosition(gui) : Vector3.zero);
                 startTime = Time.realtimeSinceStartup;
                 lastWorldPanSampleTime = startTime;
@@ -823,7 +842,7 @@ namespace RimTouch
             {
                 SuppressUiClickFallout();
                 panGestureDistance = Mathf.Max(panGestureDistance, moveDistance);
-                Vector2 panSample = PanWorldByGuiDelta(lastGui, gui);
+                Vector2 panSample = PanWorldByGuiDelta(lastGui, gui, startGui);
                 SampleWorldPanVelocity(panSample);
                 CancelWorldDragBox();
             }
@@ -869,6 +888,8 @@ namespace RimTouch
 
             if (mode != TouchMode.TwoFinger)
             {
+                gestureIsWorld = IsWorldMapActive();
+                gestureMap = Find.CurrentMap;
                 if (IsLikelyUiPosition(guiA) || IsLikelyUiPosition(guiB))
                 {
                     // Two fingers starting on a control window should not move
@@ -925,7 +946,7 @@ namespace RimTouch
             {
                 SuppressUiClickFallout();
                 panGestureDistance += Vector2.Distance(mid, lastTwoFingerMidpoint);
-                Vector2 panSample = PanWorldByGuiDelta(lastTwoFingerMidpoint, mid);
+                Vector2 panSample = PanWorldByGuiDelta(lastTwoFingerMidpoint, mid, twoFingerStartMidpoint);
                 SampleWorldPanVelocity(panSample);
                 ApplyWorldPinchZoom(lastTwoFingerDistance, distance);
                 if (RimTouchMod.Settings.enableGlobeTwist && twistDegrees != 0 && ApplyWorldTwist(twistDegrees, mid))

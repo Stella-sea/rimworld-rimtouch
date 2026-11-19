@@ -11,6 +11,78 @@ a version without a `-testN` suffix is a stable release.
 - Nothing yet. The next test build goes here first, then moves under
   its version heading when tagged.
 
+## [0.1.0-test.14] — 2026-11-19
+
+Three P1 fixes from the Codex audit of test13 (gpt-6.1-sol).
+No new settings; settings save version stays 9. Build: `build17.sh`,
+0 diagnostics. `RimTouch.dll` SHA256
+`dcc239bb00e04ed7772d61e450c0245004f5c423d0e29478890976b344bb9584`.
+Asset `RimTouch-fix-test14.zip` SHA256
+`2ee713e4dd591f5a06582bd2d3b8e4a87f3ae517d70a10444f283aee67c58ffc`.
+
+### Fixed
+
+- **Touch-tap repair no longer fires disabled buttons:** the
+  `ButtonText` tap-compensation postfix only looked at the return
+  value, so a button the game had disabled (`active=false`) could
+  still be triggered by a touch tap landing on it. The postfix now
+  receives the original `active` argument and returns early when the
+  button is disabled, and the helper also refuses when
+  `GUI.enabled` is false (which covers the `ButtonImage` /
+  `ButtonInvisible` overloads, which have no `active` parameter).
+  Verified against the 1.7.4995 assembly: both `ButtonText`
+  overloads carry `active`; the image/invisible overloads do not.
+- **Inverted turntable no longer runs away:** with
+  "invert rotation axis" on, the projected turntable inverted the
+  closed-loop correction itself (`Quaternion.Inverse(dR)`), so the
+  grabbed point moved away from the finger and the next frame's
+  error was larger — the globe could keep rotating with the finger
+  held still. The correction is never inverted now; instead the
+  turntable chases a target mirrored through the drag-start point
+  (touch-down / two-finger midpoint), which keeps the loop stable
+  while moving the globe opposite the finger. Simulation: steady
+  drag finger 600→610 px moves the anchor 600→590 px (max error
+  0.019 px), a held-still finger settles with no growth; the old
+  scheme is shown running away in the same test (held error
+  3.98→120.6 px). This is a likely cause of the dual-axis "not
+  very perfect" feel beyond the test13 jitter fix.
+- **Gestures and inertia are cancelled when the view switches
+  mid-gesture:** a gesture used to keep the anchor and zoom
+  velocity of the view it started in, even after switching between
+  the colony map and the globe, so the new view could be dragged
+  with old coordinates or inherit the globe's zoom inertia. The
+  gesture now records its view identity (world vs map, and the
+  `Map` reference) at start; a mismatch cancels the gesture
+  silently (no tap, no selection, no inertia) and no new gesture
+  starts until all fingers lift.
+
+### Notes
+
+- Simulation evidence: twist-test 9/9, globe-test 15/15,
+  anchor-test previous cases unchanged (projected vertical drag
+  grab error 8–10 px, tilt change 0.2–0.3°), smooth-return cases
+  unchanged. Simulation verifies logic only; gesture feel still
+  needs the 7210.
+- P2 findings from the same audit (two-finger end-frame move
+  dropped, two-finger turntable north-lock, patch-install fallback,
+  settings validation, UI-scroll inertia timing) are deferred.
+
+### Test on the 7210
+
+1. With "invert rotation axis" ON, drag the globe with one finger
+   (dual-axis on): the globe must move opposite the finger,
+   smoothly, and stop dead when the finger stops — no creeping
+   rotation after release.
+2. With the setting OFF, drag normally: the grabbed point still
+   tracks the finger as in test13.
+3. Tap a button the game has disabled (e.g. a greyed-out command):
+   nothing must happen; enabled buttons still respond to taps.
+4. Start dragging on the colony map, then switch to the globe
+   (or globe to map) without lifting the finger: the drag must
+   stop, nothing must be selected, and the new view must not jump
+   or inherit zoom inertia. Lift all fingers, then drag again —
+   the new view must work normally.
+
 ## [0.1.0-test.13] — 2026-11-12
 
 Six fixes from the test12 playtest on the Dell Latitude 7210.

@@ -30,8 +30,10 @@ namespace RimTouch
             return RimTouchMod.ExtraUiScalesEnabled ? ExtraUiScales : nativeChoices;
         }
 
-        public static void PostprocessButtonTap(Rect rect, ref bool result)
+        public static void PostprocessButtonTap(Rect rect, ref bool result, bool active = true)
         {
+            if (!active || !GUI.enabled) return;
+
             if (TouchInputDriver.ShouldSuppressUiClickInRect(rect))
             {
                 result = false;
@@ -340,18 +342,18 @@ namespace RimTouch
     [HarmonyPatch(typeof(Widgets), "ButtonText", new[] { typeof(Rect), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(System.Nullable<TextAnchor>) })]
     public static class WidgetsButtonTextPatch
     {
-        public static void Postfix(Rect rect, ref bool __result)
+        public static void Postfix(Rect rect, ref bool __result, bool active)
         {
-            RimTouchBootstrap.PostprocessButtonTap(rect, ref __result);
+            RimTouchBootstrap.PostprocessButtonTap(rect, ref __result, active);
         }
     }
 
     [HarmonyPatch(typeof(Widgets), "ButtonText", new[] { typeof(Rect), typeof(string), typeof(bool), typeof(bool), typeof(Color), typeof(bool), typeof(System.Nullable<TextAnchor>) })]
     public static class WidgetsButtonTextColorPatch
     {
-        public static void Postfix(Rect rect, ref bool __result)
+        public static void Postfix(Rect rect, ref bool __result, bool active)
         {
-            RimTouchBootstrap.PostprocessButtonTap(rect, ref __result);
+            RimTouchBootstrap.PostprocessButtonTap(rect, ref __result, active);
         }
     }
 

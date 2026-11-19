@@ -169,7 +169,7 @@ namespace RimTouch
             return null;
         }
 
-        private static Vector2 PanWorldByGuiDelta(Vector2 previousGui, Vector2 currentGui)
+        private static Vector2 PanWorldByGuiDelta(Vector2 previousGui, Vector2 currentGui, Vector2 dragStartGui)
         {
             WorldCameraDriver driver = Find.WorldCameraDriver;
             if (driver == null)
@@ -187,7 +187,12 @@ namespace RimTouch
                     // turntable axes, so the grabbed point tracks the finger (grab
                     // error 8-10px instead of 163-217px) without rolling. Falls back
                     // to the fixed-k turntable when the anchor or raycast is missing.
-                    ok = ApplyProjectedTurntableDrag(driver, currentGui)
+                    // Chase a target mirrored through the drag start for cumulative
+                    // opposite motion in a stable converging feedback loop. When
+                    // the finger stops, the target is fixed and the anchor settles.
+                    Vector2 projectedTargetGui = RimTouchMod.Settings != null && RimTouchMod.Settings.invertTurntableAxis
+                        ? 2f * dragStartGui - currentGui : currentGui;
+                    ok = ApplyProjectedTurntableDrag(driver, projectedTargetGui)
                         || ApplyTurntableDrag(driver, guiDelta);
                 }
                 else
@@ -493,7 +498,7 @@ namespace RimTouch
         // composition); straight drags, the normal case, stay at 0.2-0.3 deg.
         // Returns false when the anchor or the finger raycast is unavailable, so the
         // caller can fall back to the fixed-k turntable for that frame.
-        private static bool ApplyProjectedTurntableDrag(WorldCameraDriver driver, Vector2 currentGui)
+        private static bool ApplyProjectedTurntableDrag(WorldCameraDriver driver, Vector2 targetGui)
         {
             if (driver == null || WorldCameraSphereRotationField == null)
             {
@@ -526,7 +531,7 @@ namespace RimTouch
             }
             north.Normalize();
             Vector3 targetPoint;
-            if (!TryGetWorldSpherePointAtGui(currentGui, out targetPoint))
+            if (!TryGetWorldSpherePointAtGui(targetGui, out targetPoint))
             {
                 return false;
             }
@@ -563,10 +568,6 @@ namespace RimTouch
             }
             turnAngleDeg = Mathf.Min(turnAngleDeg, 45f);
             Quaternion dR = Quaternion.AngleAxis(turnAngleDeg, omegaTurn.normalized);
-            if (RimTouchMod.Settings != null && RimTouchMod.Settings.invertTurntableAxis)
-            {
-                dR = Quaternion.Inverse(dR);
-            }
             Quaternion newRotation = dR * sphereRotation;
             if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
             {
