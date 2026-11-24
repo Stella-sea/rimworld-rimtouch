@@ -301,9 +301,82 @@ namespace RimTouch
     [HarmonyPatch(typeof(Widgets), "HorizontalSlider", new[] { typeof(Rect), typeof(float), typeof(float), typeof(float), typeof(bool), typeof(string), typeof(string), typeof(string), typeof(float) })]
     public static class WidgetsHorizontalSliderTouchPatch
     {
-        public static void Prefix()
+        public static void Prefix(Rect rect, bool middleAlignment, string label, out SliderTouchState __state)
         {
-            TouchInputDriver.FilterHorizontalSliderDrag();
+            TouchInputDriver.BeginHorizontalSliderTouch(rect, middleAlignment, label, out __state);
+        }
+
+        public static void Postfix(SliderTouchState __state)
+        {
+            TouchInputDriver.EndHorizontalSliderTouch(__state);
+        }
+    }
+
+    [HarmonyPatch(typeof(Widgets), "FloatRange")]
+    public static class WidgetsFloatRangeTouchPatch
+    {
+        public static void Prefix(Rect rect, int id, ref FloatRange range, out FloatRangeTouchState __state)
+        {
+            TouchInputDriver.BeginFloatRangeTouch(rect, id, range, out __state);
+        }
+
+        public static void Postfix(ref FloatRange range, FloatRangeTouchState __state)
+        {
+            TouchInputDriver.EndFloatRangeTouch(__state, ref range);
+        }
+    }
+
+    [HarmonyPatch(typeof(Widgets), "IntRange")]
+    public static class WidgetsIntRangeTouchPatch
+    {
+        public static void Prefix(Rect rect, int id, ref IntRange range, out IntRangeTouchState __state)
+        {
+            TouchInputDriver.BeginIntRangeTouch(rect, id, range, out __state);
+        }
+
+        public static void Postfix(ref IntRange range, IntRangeTouchState __state)
+        {
+            TouchInputDriver.EndIntRangeTouch(__state, ref range);
+        }
+    }
+
+    [HarmonyPatch(typeof(GUI), "HorizontalSlider", new[] { typeof(Rect), typeof(float), typeof(float), typeof(float) })]
+    public static class GuiHorizontalSliderTouchPatch
+    {
+        public static bool Prepare()
+        {
+            MethodInfo target = AccessTools.Method(typeof(GUI), "HorizontalSlider", new[] { typeof(Rect), typeof(float), typeof(float), typeof(float) });
+            return target != null && target.GetMethodBody() != null;
+        }
+
+        public static void Prefix(Rect position, float value, out GuiSliderTouchState __state)
+        {
+            TouchInputDriver.BeginGuiSliderTouch(position, value, true, out __state);
+        }
+
+        public static void Postfix(ref float __result, GuiSliderTouchState __state)
+        {
+            TouchInputDriver.EndGuiSliderTouch(__state, ref __result);
+        }
+    }
+
+    [HarmonyPatch(typeof(GUI), "VerticalSlider", new[] { typeof(Rect), typeof(float), typeof(float), typeof(float) })]
+    public static class GuiVerticalSliderTouchPatch
+    {
+        public static bool Prepare()
+        {
+            MethodInfo target = AccessTools.Method(typeof(GUI), "VerticalSlider", new[] { typeof(Rect), typeof(float), typeof(float), typeof(float) });
+            return target != null && target.GetMethodBody() != null;
+        }
+
+        public static void Prefix(Rect position, float value, out GuiSliderTouchState __state)
+        {
+            TouchInputDriver.BeginGuiSliderTouch(position, value, false, out __state);
+        }
+
+        public static void Postfix(ref float __result, GuiSliderTouchState __state)
+        {
+            TouchInputDriver.EndGuiSliderTouch(__state, ref __result);
         }
     }
 

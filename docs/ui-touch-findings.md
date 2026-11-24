@@ -215,3 +215,68 @@ RimWorld 1.7 与 Harmony 依赖后补跑（此前预收口版本的本地 DLL SH
 本轮真机待验收：球外点按清空选择、球外拖动不清空、跨圆边连续、扭转后随手
 方向与北向保持、极点与惯性、原版回北按钮、鼠标切换和失焦/主菜单清理。
 测试时补记窗口模式、UI/系统缩放、设备及实际 DLL 身份。
+
+## 滚动与滑块共存时的间断掉点与跃变：实证、IL 核验与修复（2026-11-24）
+
+### 用户复现与真机精简诊断证据
+
+用户在 RimTouch 设置页（`RimWorld.Dialog_ModSettings`，`1920×1210` framebuffer，
+`outRect=(0,40,864,584)`、`viewRect=(0,0,844,1004)`、`scrollPosition.y=0`）复现：
+纯横向拖滑块正常，手指略离原高度后出现间断掉点与跃变；无滚动条页面无论拉多远
+都顺畅。精简诊断记录 `gesture=1`（`finger=20685`，`F2996`–`F3554`）：
+- 全程 `cnt=1, cancel=False`，排除硬件断触与窗口取消；
+- `F2996`–`F3136` 纯横向 `|drag.y| <= 5.3`，除跨起点 ±6 GUI 单位外均放行；
+- `F3141`–`F3321` 手指自然下偏 `25~77` GUI 单位后，旧 `FilterHorizontalSliderDrag`
+  每帧重算累计位移 `|dx| <= 6 || |dx| <= 1.5|dy|` 且不锁定状态，在 `F3213 (12,51.4)`、
+  `F3249 (12,67.4)`、`F3267 (48.7,76.7)`、`F3303 (2.7,70)`、`F3321 (29.3,56)` 及
+  `F3502 (4.7,9.3)` 反复消费 `MouseDrag`，跳出扇形死区后又瞬间放行造成跃变；
+  且上述多帧 `directionClaim=True`，若页面已下滚过（存在向上余量），滚动会在中途
+  直接抢走滑块手势。
+
+### 只读 IL 核验（RimWorld 1.7.4995 rev309）
+
+检查 `Assembly-CSharp.dll` 与 `UnityStubs.dll`，全游戏 12 个滑块/范围滑块入口
+全部汇聚到 5 个底层方法，但底层行为分为 3 类：
+1. `Verse.Widgets.HorizontalSlider`（9 参，承载 `Listing_Standard.Slider` /
+   `SliderLabeled`、`Widgets.HorizontalSlider`(5 参) 与 `FrequencyHorizontalSlider`）：
+   `MouseDown` 仅写 `Widgets.sliderDraggingID` 并 `Use()`，不改值；拖拽更新依赖
+   `sliderDraggingID == id && UnityGUIBugsFixer.MouseDrag(0)`（Windows 下要求
+   `EventType.MouseDrag`），消费 `MouseDrag` 不会清除 `sliderDraggingID`。
+2. `Verse.Widgets.FloatRange`（11 参）与 `Verse.Widgets.IntRange`（7 参，承载
+   `FloatRangeWithTypeIn`、`Listing_Standard.IntRange`）：使用 `Widgets.draggingId`
+   与 `Widgets.curDragEnd`，**`MouseDown` 当场改值**，拖拽期同样检查 `MouseDrag(0)`。
+3. `UnityEngine.GUI.HorizontalSlider` / `VerticalSlider`（4 参，Waylith 托管实现，
+   承载 `LudeonTK.DevGUI.HorizontalSlider` 与 `GUI.Slider`）：使用 `GUI._guiSliderDragId`，
+   **`MouseDown` 及后续每一轮 `Layout`/`Repaint` 只要 `Input.GetMouseButton(0)` 为真
+   就会直接改值**，单靠 `Event.Use()` 拦不住。
+
+### 本轮修复
+
+- **一次性方向仲裁 + 全手势锁定（`TouchInputDriver.UiScroll.cs`）**：
+  - 引入 `UiSliderArbitrationState`（`None` / `Pending` / `Committed`）与 `ScrollDecision.ControlLocked`，
+    在 `UpdateOneFinger` 新手势起手与 `ResetState` 清零。
+  - 在可滚动候选窗口内保留 6 GUI 单位起手死区：`|dx| > 6 && |dx| > 1.5|dy|` 立即锁定
+    `Committed`；`|dy| > 6 && |dy| > 1.5|dx|` 且有余量由滚动接管；斜向超过 12 GUI 单位
+    按倾向决断（横向滑块 `|dx| >= |dy|` 锁滑块，`|dy| > |dx|` 有余量归滚动、无余量不误锁滑块）。
+  - 一旦 `Committed`，滑块侧全部事件无条件放行，滚动侧返回 `ControlLocked` 永不中途抢占，
+    同时继续由 `ShouldAllowWindowDrag` 阻止窗口误拖；一旦滚动接管，`ClaimTouchForUiScroll`
+    通过 `ReflectionGuard` 调用 `Widgets.ResetSliderDraggingIDs()` 并清零 `GUI._guiSliderDragId`。
+  - 双向可滚容器中命中横向/纵向滑块处于 `Pending` 时，屏蔽同轴滚动资格防止抢占；
+    同窗口中未命中的其他滑块绝不替当前滑块消费 `MouseDrag`。
+- **全滑块补丁与快照护值（`RimTouchBootstrap.cs`）**：
+  - 升级 `WidgetsHorizontalSliderTouchPatch`（Prefix/Postfix 绑定 `sliderDraggingID`）；
+  - 新增 `WidgetsFloatRangeTouchPatch`、`WidgetsIntRangeTouchPatch`、`GuiHorizontalSliderTouchPatch`、
+    `GuiVerticalSliderTouchPatch`（`GUI.*Slider` 均带 `Prepare()` 托管方法体检查），
+    在 `Pending`/已滚动状态下通过 Prefix/Postfix 值快照防止 `MouseDown` 与 `Layout`/`Repaint` 误改值；
+    无滚动条页面完全直通原版。
+- **诊断与隔离回归**：
+  - `TouchInputDriver.Diagnostics.cs` 补齐 `ScrollDecision.ControlLocked -> "controlLocked"`
+    及状态转移级 `sliderArbitration` 事件；
+  - `scripts/test-ui-touch.ps1` 补齐真机日志漂移轨迹与负对照断言、斜向 12px 决断、
+    多范围滑块防误吃、`FloatRange`/`IntRange`/`GUI.HorizontalSlider` 快照护值与双向滚动防抢占。
+
+### 待真机验收
+
+- RimTouch 设置页（页面顶部及下滚后各位置）：滑块纯横拖、拖出轨道上下 70+px 折返跨起点均顺滑无掉点且页面不抢滚；从滑块起手竖滚页面不改滑块值；
+- 含 `FloatRange`/`IntRange` 的列表页（如服饰/食物/清单策略）：竖滚不误改范围，横拖端点顺滑；
+- 调试窗（`DevGUI.HorizontalSlider`）及无滚动条页面滑块行为正常。

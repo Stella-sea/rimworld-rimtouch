@@ -33,6 +33,8 @@ namespace UnityEngine {
   public static float Min(float a,float b)=>System.Math.Min(a,b);
   public static float Abs(float a)=>System.Math.Abs(a);public static float Clamp(float a,float lo,float hi)=>System.Math.Clamp(a,lo,hi);
   public static float Clamp01(float a)=>Clamp(a,0,1);public static float Exp(float a)=>(float)System.Math.Exp(a);
+  public static float Round(float a)=>(float)System.Math.Round(a);
+  public static float Lerp(float a,float b,float t)=>a+(b-a)*Clamp01(t);
  }
  public static class Time {public static int frameCount;public static float realtimeSinceStartup;}
  public static class Screen {public static int width=1920,height=1210;}
@@ -43,7 +45,37 @@ namespace UnityEngine {
   public static bool GetMouseButtonUp(int b)=>b==0&&mouseUp;
   public static bool GetMouseButton(int b)=>b==0&&mouseHeld;
  }
- public static class GUI {public static bool enabled=true;}
+ public static class GUI {
+  public static bool enabled=true;
+  private static int _guiSliderDragId;
+  public static int DebugSliderDragId { get => _guiSliderDragId; set => _guiSliderDragId = value; }
+  public static float HorizontalSlider(Rect position, float value, float leftValue, float rightValue) {
+   int id = ((int)position.x << 16) ^ (int)position.y ^ 0x101;
+   var e = Event.current;
+   if (e != null && e.type == EventType.MouseDown && e.button == 0 && position.Contains(e.mousePosition)) { _guiSliderDragId = id; e.Use(); }
+   if (_guiSliderDragId == id) {
+    if (e != null && Input.GetMouseButton(0) && e.type != EventType.MouseUp) {
+     float t = position.width > 0 ? Mathf.Clamp01((e.mousePosition.x - position.x) / position.width) : 0f;
+     value = Mathf.Lerp(Mathf.Min(leftValue, rightValue), Mathf.Max(leftValue, rightValue), t);
+     if (e.type == EventType.MouseDrag) e.Use();
+    } else _guiSliderDragId = 0;
+   }
+   return value;
+  }
+  public static float VerticalSlider(Rect position, float value, float topValue, float bottomValue) {
+   int id = ((int)position.x << 16) ^ (int)position.y ^ 0x202;
+   var e = Event.current;
+   if (e != null && e.type == EventType.MouseDown && e.button == 0 && position.Contains(e.mousePosition)) { _guiSliderDragId = id; e.Use(); }
+   if (_guiSliderDragId == id) {
+    if (e != null && Input.GetMouseButton(0) && e.type != EventType.MouseUp) {
+     float t = position.height > 0 ? Mathf.Clamp01((e.mousePosition.y - position.y) / position.height) : 0f;
+     value = Mathf.Lerp(topValue, bottomValue, t);
+     if (e.type == EventType.MouseDrag) e.Use();
+    } else _guiSliderDragId = 0;
+   }
+   return value;
+  }
+ }
  public static class GUIUtility {
   public static float scale=1.5f; public static Vector2 offset, groupOffset;
   public static int keyboardControl;
@@ -79,10 +111,87 @@ namespace Verse {
   }
  }
  public static class Mouse { public static bool IsOver(UnityEngine.Rect r)=>UnityEngine.Event.current!=null&&r.Contains(UnityEngine.Event.current.mousePosition); }
+ public struct FloatRange { public float min, max; public FloatRange(float a, float b) { min = a; max = b; } }
+ public struct IntRange { public int min, max; public IntRange(int a, int b) { min = a; max = b; } }
  public static class Widgets {
   public enum DraggableResult { Idle, Pressed, Dragged, DraggedThenPressed }
+  private enum RangeEnd : byte { None, Min, Max }
   static int activeControl; static UnityEngine.Vector3 mouseStart; static bool dragged;
+  private static int sliderDraggingID;
+  private static int draggingId;
+  private static RangeEnd curDragEnd;
+  public static int DebugSliderDraggingID { get => sliderDraggingID; set => sliderDraggingID = value; }
+  public static int DebugRangeDraggingId { get => draggingId; set => draggingId = value; }
   public static bool checkboxPainting, checkboxPaintingState;
+  public static void ResetSliderDraggingIDs() { sliderDraggingID = 0; draggingId = 0; curDragEnd = RangeEnd.None; }
+  public static float HorizontalSlider(UnityEngine.Rect rect, float value, float min, float max, bool middleAlignment = false, string label = null, string leftAlignedLabel = null, string rightAlignedLabel = null, float roundTo = -1f) {
+   int id = ((int)rect.x << 16) ^ (int)rect.y ^ 0x303;
+   var e = UnityEngine.Event.current;
+   if (e.type == UnityEngine.EventType.MouseDown && Mouse.IsOver(rect) && sliderDraggingID != id) { sliderDraggingID = id; e.Use(); }
+   if (sliderDraggingID == id && e.type == UnityEngine.EventType.MouseDrag && e.button == 0) {
+    float t = UnityEngine.Mathf.Clamp01((e.mousePosition.x - rect.x) / rect.width);
+    value = UnityEngine.Mathf.Clamp(min + t * (max - min), min, max);
+    e.Use();
+   }
+   return value;
+  }
+  public static void FloatRange(UnityEngine.Rect rect, int id, ref FloatRange range, float min, float max) {
+   var e = UnityEngine.Event.current;
+   bool started = false;
+   if (Mouse.IsOver(rect) || draggingId == id) {
+    if (e.type == UnityEngine.EventType.MouseDown && e.button == 0 && draggingId != id) { draggingId = id; curDragEnd = RangeEnd.Max; started = true; e.Use(); }
+    if (started || (curDragEnd != RangeEnd.None && e.type == UnityEngine.EventType.MouseDrag && e.button == 0)) {
+     float v = UnityEngine.Mathf.Clamp(min + ((e.mousePosition.x - rect.x) / rect.width) * (max - min), min, max);
+     range.max = v;
+     if (e.type == UnityEngine.EventType.MouseDrag) e.Use();
+    }
+   }
+  }
+  public static void IntRange(UnityEngine.Rect rect, int id, ref IntRange range, int min, int max) {
+   var e = UnityEngine.Event.current;
+   bool started = false;
+   if (Mouse.IsOver(rect) || draggingId == id) {
+    if (e.type == UnityEngine.EventType.MouseDown && e.button == 0 && draggingId != id) { draggingId = id; curDragEnd = RangeEnd.Max; started = true; e.Use(); }
+    if (started || (curDragEnd != RangeEnd.None && e.type == UnityEngine.EventType.MouseDrag && e.button == 0)) {
+     int v = (int)UnityEngine.Mathf.Round(UnityEngine.Mathf.Clamp(min + ((e.mousePosition.x - rect.x) / rect.width) * (max - min), min, max));
+     range.max = v;
+     if (e.type == UnityEngine.EventType.MouseDrag) e.Use();
+    }
+   }
+  }
+  public static float PatchedHorizontalSlider(UnityEngine.Rect rect, float value, float min, float max) {
+   RimTouch.SliderTouchState st;
+   RimTouch.WidgetsHorizontalSliderTouchPatch.Prefix(rect, false, null, out st);
+   value = HorizontalSlider(rect, value, min, max);
+   RimTouch.WidgetsHorizontalSliderTouchPatch.Postfix(st);
+   return value;
+  }
+  public static void PatchedFloatRange(UnityEngine.Rect rect, int id, ref FloatRange range, float min, float max) {
+   RimTouch.FloatRangeTouchState st;
+   RimTouch.WidgetsFloatRangeTouchPatch.Prefix(rect, id, ref range, out st);
+   FloatRange(rect, id, ref range, min, max);
+   RimTouch.WidgetsFloatRangeTouchPatch.Postfix(ref range, st);
+  }
+  public static void PatchedIntRange(UnityEngine.Rect rect, int id, ref IntRange range, int min, int max) {
+   RimTouch.IntRangeTouchState st;
+   RimTouch.WidgetsIntRangeTouchPatch.Prefix(rect, id, ref range, out st);
+   IntRange(rect, id, ref range, min, max);
+   RimTouch.WidgetsIntRangeTouchPatch.Postfix(ref range, st);
+  }
+  public static float PatchedGuiHorizontalSlider(UnityEngine.Rect rect, float value, float left, float right) {
+   RimTouch.GuiSliderTouchState st;
+   RimTouch.GuiHorizontalSliderTouchPatch.Prefix(rect, value, out st);
+   float res = UnityEngine.GUI.HorizontalSlider(rect, value, left, right);
+   RimTouch.GuiHorizontalSliderTouchPatch.Postfix(ref res, st);
+   return res;
+  }
+  public static float PatchedGuiVerticalSlider(UnityEngine.Rect rect, float value, float top, float bottom) {
+   RimTouch.GuiSliderTouchState st;
+   RimTouch.GuiVerticalSliderTouchPatch.Prefix(rect, value, out st);
+   float res = UnityEngine.GUI.VerticalSlider(rect, value, top, bottom);
+   RimTouch.GuiVerticalSliderTouchPatch.Postfix(ref res, st);
+   return res;
+  }
   public static DraggableResult ButtonInvisibleDraggable(UnityEngine.Rect butRect, bool doMouseoverSound=false) {
    int id = UnityEngine.GUIUtility.GetControlID(UnityEngine.FocusType.Passive, butRect);
    if (UnityEngine.Input.GetMouseButtonDown(0) && Mouse.IsOver(butRect)) { activeControl = id; mouseStart = UnityEngine.Input.mousePosition; dragged = false; }
@@ -127,7 +236,13 @@ namespace RimWorld {
  }
 }
 namespace RimWorld.Planet {}
-namespace HarmonyLib { public class HarmonyPatch : System.Attribute { public HarmonyPatch(System.Type t, string m, System.Type[] p=null){} } }
+namespace HarmonyLib {
+ public class HarmonyPatch : System.Attribute { public HarmonyPatch(System.Type t, string m, System.Type[] p=null){} }
+ public static class AccessTools {
+  public static System.Reflection.FieldInfo Field(System.Type t, string n) => t.GetField(n, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
+  public static System.Reflection.MethodInfo Method(System.Type t, string n, System.Type[] p = null) => p == null ? t.GetMethod(n, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance) : t.GetMethod(n, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, p, null);
+ }
+}
 namespace RimTouch.TouchPlatform {
  public enum ContactPhase {Began,Moved,Stationary,Ended}
  public struct ContactTouch {public long fingerId;public ContactPhase phase;public UnityEngine.Vector2 position,deltaPosition;}
@@ -136,9 +251,11 @@ namespace RimTouch.TouchPlatform {
 }
 namespace RimTouch {
  internal static class ReflectionGuard {
-  public static System.Reflection.FieldInfo Field(System.Type t,string n,bool l)=>null;
-  public static bool TryGetField<T>(System.Reflection.FieldInfo f,object o,out T v){v=default(T);return false;}
-  public static bool TrySetField(System.Reflection.FieldInfo f,object o,object v)=>false;
+  public static System.Reflection.FieldInfo Field(System.Type t,string n,bool l)=>HarmonyLib.AccessTools.Field(t,n);
+  public static System.Reflection.MethodInfo Method(System.Type t,string n,bool l)=>HarmonyLib.AccessTools.Method(t,n);
+  public static bool TryGetField<T>(System.Reflection.FieldInfo f,object o,out T v){v=default(T);if(f==null)return false;object r=f.GetValue(o);if(r is T){v=(T)r;return true;}return false;}
+  public static bool TrySetField(System.Reflection.FieldInfo f,object o,object v){if(f==null)return false;f.SetValue(o,v);return true;}
+  public static bool TryInvoke(System.Reflection.MethodInfo m,object o,object[] a){if(m==null)return false;m.Invoke(o,a);return true;}
  }
  public enum TouchMode {None,OneFinger,SelectionHold,MapPan,TwoFinger}
  public static partial class TouchInputDriver {
@@ -158,6 +275,7 @@ namespace RimTouch {
   static bool IsFinite(UnityEngine.Vector2 p)=>true;
   struct ScrollProofEvent {}static ScrollProofEvent CaptureScrollProofEvent()=>new ScrollProofEvent();
   static void RecordScrollDecision(UnityEngine.Rect a,UnityEngine.Rect b,UnityEngine.Vector2 c,UnityEngine.Vector2 d,bool e,bool f,UnityEngine.Vector2 g,ScrollProofEvent i,bool j,ScrollDecision k){}
+  static void RecordSliderArbitration(string a,UiSliderKind b,int c,UiControlDragAxis d,UnityEngine.Vector2 e,ScrollProofEvent f){}
   static void Assert(bool p,string m){if(!p)throw new System.Exception(m);}
   static void Contact(float x,float y) {TouchPlatform.TouchSource.Count=1;TouchPlatform.TouchSource.touch=new TouchPlatform.ContactTouch {fingerId=1,phase=TouchPlatform.ContactPhase.Moved,position=new UnityEngine.Vector2(x*1.5f,1210-y*1210/807)};UnityEngine.Time.frameCount++;}
   public static void RunTests() {
@@ -206,10 +324,187 @@ namespace RimTouch {
    Contact(300,235);
    Assert(ProcessScrollViewTouch(outerRect,outerView,ref outerScroll)&&SameRect(uiScrollActiveRect,outerRect),"outer did not take over when inner had no headroom");
 
-   // Slider jitter filter
-   uiScrollGestureActive=false;uiScrollWindow=null;uiScrollCandidateWindow=w;
-   startGui=new UnityEngine.Vector2(400,300);Contact(402,303);UnityEngine.Event.current.type=UnityEngine.EventType.MouseDrag;FilterHorizontalSliderDrag();Assert(UnityEngine.Event.current.type==UnityEngine.EventType.Used,"jitter reached slider");
-   Contact(430,303);UnityEngine.Event.current.type=UnityEngine.EventType.MouseDrag;FilterHorizontalSliderDrag();Assert(UnityEngine.Event.current.type==UnityEngine.EventType.MouseDrag,"horizontal slider drag blocked");
+   // Slider-scroll arbitration, locking, diagonal resolution, and full slider coverage
+   Action<float,float> SyncMouseGui = (gx, gy) => {
+    UnityEngine.Input.mousePosition = new UnityEngine.Vector3(gx * 1.5f, 1210f - gy * 1210f / 807f, 0f);
+    UnityEngine.Event.current.mousePosition = new UnityEngine.Vector2(gx - 208f, gy - 71.33333f);
+   };
+   Action ResetGesture = () => {
+    uiScrollGestureActive = false; uiScrollWindow = null; uiScrollCandidateWindow = null;
+    ResetUiSliderArbitration();
+    Verse.Widgets.ResetSliderDraggingIDs();
+    UnityEngine.GUI.DebugSliderDragId = 0;
+   };
+
+   // 1) Legacy FilterHorizontalSliderDrag compatibility + commit locking
+   ResetGesture();
+   uiScrollCandidateWindow = w; uiTouchStartWindow = w; Verse.Find.WindowStack.currentlyDrawnWindow = w;
+   startGui = new UnityEngine.Vector2(400, 300);
+   Contact(402, 303); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag;
+   FilterHorizontalSliderDrag(); Assert(UnityEngine.Event.current.type == UnityEngine.EventType.Used, "jitter reached slider");
+   Contact(430, 303); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag;
+   FilterHorizontalSliderDrag(); Assert(UnityEngine.Event.current.type == UnityEngine.EventType.MouseDrag, "horizontal slider drag blocked");
+   Assert(uiSliderState == UiSliderArbitrationState.Committed, "slider did not commit after horizontal drag");
+
+   // 2) Exact reproduction of real device log (F2996-F3554): once committed, vertical drift (25..77px)
+   //    and crossing back over startGui never drop MouseDrag or let scroll steal the gesture.
+   ResetGesture();
+   var sliderA = new UnityEngine.Rect(20, 200, 800, 22);
+   var sliderB = new UnityEngine.Rect(20, 256, 800, 22);
+   scroll = new UnityEngine.Vector2(0, 120); // non-zero scroll so upward & downward headroom both exist
+   float valA = 0.5f, valB = 0.5f;
+   startGui = new UnityEngine.Vector2(865.3f, 338.1f);
+   Contact(865.3f, 338.1f); SyncMouseGui(865.3f, 338.1f);
+   UnityEngine.Event.current.type = UnityEngine.EventType.MouseDown;
+   Assert(!ProcessScrollViewTouch(rect, view, ref scroll), "MouseDown claimed scroll");
+   valA = Verse.Widgets.PatchedHorizontalSlider(sliderA, valA, 0f, 1f);
+   valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+   Assert(uiSliderState == UiSliderArbitrationState.Pending && Verse.Widgets.DebugSliderDraggingID != 0, "HorizontalSlider did not enter Pending on MouseDown");
+   // Sub-slop jitter freezes slider B
+   Contact(868.3f, 340.1f); SyncMouseGui(868.3f, 340.1f); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag;
+   float beforeValB = valB;
+   valA = Verse.Widgets.PatchedHorizontalSlider(sliderA, valA, 0f, 1f);
+   valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+   Assert(System.Math.Abs(valB - beforeValB) < 0.0001f, "sub-slop jitter mutated HorizontalSlider");
+   // Horizontal drag commits slider B (even though slider A draws earlier)
+   Contact(808f, 338.1f); SyncMouseGui(808f, 338.1f); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag;
+   Assert(!ProcessScrollViewTouch(rect, view, ref scroll), "horizontal drag stolen by scroll");
+   valA = Verse.Widgets.PatchedHorizontalSlider(sliderA, valA, 0f, 1f);
+   valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+   Assert(uiSliderState == UiSliderArbitrationState.Committed && valB != beforeValB, "HorizontalSlider failed to commit");
+   // Replay drifted / crossing-origin offsets from real device log: (12, 67.4), (48.7, 76.7), (2.7, 70.0), (4.7, 9.3)
+   foreach (var off in new[] {
+    new UnityEngine.Vector2(12f, 67.4f),
+    new UnityEngine.Vector2(48.7f, 76.7f),
+    new UnityEngine.Vector2(2.7f, 70f),
+    new UnityEngine.Vector2(4.7f, 9.3f)
+   }) {
+    float tx = startGui.x + off.x, ty = startGui.y + off.y;
+    Contact(tx, ty); SyncMouseGui(tx, ty);
+    UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag;
+    float prevScrollY = scroll.y;
+    ScrollDecision dec;
+    bool scHandled = ProcessScrollViewTouchCore(rect, view, ref scroll, out dec);
+    Assert(!scHandled && dec == ScrollDecision.ControlLocked && System.Math.Abs(scroll.y - prevScrollY) < 0.001f,
+     "committed slider was stolen by scroll at offset " + off.x + "," + off.y);
+    Assert(!ShouldAllowWindowDrag(), "committed slider allowed window drag");
+    float expected = UnityEngine.Mathf.Clamp01(((tx - 208f) - sliderB.x) / sliderB.width);
+    valA = Verse.Widgets.PatchedHorizontalSlider(sliderA, valA, 0f, 1f);
+    valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+    Assert(System.Math.Abs(valB - expected) < 0.002f, "committed HorizontalSlider dropped drag at offset " + off.x + "," + off.y);
+    // Negative control: the old stateless formula WOULD have rejected every one of these points
+    bool oldWouldBlock = System.Math.Abs(off.x) <= MovementDetectionSlopPixels || System.Math.Abs(off.x) <= System.Math.Abs(off.y) * 1.5f;
+    Assert(oldWouldBlock, "test point did not exercise legacy dropout zone");
+   }
+
+   // 3) Diagonal > 12px tie-break: |dx| >= |dy| -> slider commits; |dy| > |dx| with headroom -> scroll claims & clears slider
+   ResetGesture();
+   scroll = new UnityEngine.Vector2(0, 120); valB = 0.5f;
+   startGui = new UnityEngine.Vector2(500, 338);
+   Contact(500, 338); SyncMouseGui(500, 338); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDown;
+   ProcessScrollViewTouch(rect, view, ref scroll);
+   valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+   Contact(511, 348); SyncMouseGui(511, 348); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag; // dx=11, dy=10, dist=14.87 > 12
+   Assert(!ProcessScrollViewTouch(rect, view, ref scroll), "diagonal dx>=dy stolen by scroll");
+   valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+   Assert(uiSliderState == UiSliderArbitrationState.Committed, "diagonal dx>=dy did not commit slider");
+
+   ResetGesture();
+   scroll = new UnityEngine.Vector2(0, 120); valB = 0.5f;
+   startGui = new UnityEngine.Vector2(500, 338);
+   Contact(500, 338); SyncMouseGui(500, 338); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDown;
+   ProcessScrollViewTouch(rect, view, ref scroll);
+   valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+   Contact(510, 349); SyncMouseGui(510, 349); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag; // dx=10, dy=11, dist=14.87 > 12
+   Assert(ProcessScrollViewTouch(rect, view, ref scroll) && uiScrollGestureActive, "diagonal dy>dx did not claim scroll");
+   Assert(Verse.Widgets.DebugSliderDraggingID == 0 && uiSliderState == UiSliderArbitrationState.None, "scroll claim did not clear slider drag state");
+   valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+   Assert(System.Math.Abs(valB - 0.5f) < 0.0001f, "slider value changed after diagonal scroll claim");
+
+   // Diagonal dy>dx with NO vertical headroom (top of page pulling down) must neither scroll nor falsely lock slider
+   ResetGesture();
+   scroll = new UnityEngine.Vector2(0, 0); valB = 0.5f;
+   startGui = new UnityEngine.Vector2(500, 338);
+   Contact(500, 338); SyncMouseGui(500, 338); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDown;
+   ProcessScrollViewTouch(rect, view, ref scroll);
+   valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+   Contact(510, 349); SyncMouseGui(510, 349); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag;
+   Assert(!ProcessScrollViewTouch(rect, view, ref scroll) && !uiScrollGestureActive, "no-headroom scroll claimed");
+   valB = Verse.Widgets.PatchedHorizontalSlider(sliderB, valB, 0f, 1f);
+   Assert(uiSliderState == UiSliderArbitrationState.Pending && System.Math.Abs(valB - 0.5f) < 0.0001f, "vertical-dominant drag with no headroom falsely committed slider");
+
+   // 4) Multi-FloatRange / IntRange: earlier unrelated range never eats MouseDrag; MouseDown value is guarded until commit
+   ResetGesture();
+   var rangeRect1 = new UnityEngine.Rect(20, 180, 400, 28);
+   var rangeRect2 = new UnityEngine.Rect(20, 260, 400, 28);
+   var fr1 = new Verse.FloatRange(0.2f, 0.5f);
+   var fr2 = new Verse.FloatRange(0.2f, 0.5f);
+   scroll = new UnityEngine.Vector2(0, 120);
+   startGui = new UnityEngine.Vector2(500, 345); // local (292, 273.7) inside rangeRect2
+   Contact(500, 345); SyncMouseGui(500, 345); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDown;
+   ProcessScrollViewTouch(rect, view, ref scroll);
+   Verse.Widgets.PatchedFloatRange(rangeRect1, 101, ref fr1, 0f, 1f);
+   Verse.Widgets.PatchedFloatRange(rangeRect2, 202, ref fr2, 0f, 1f);
+   Assert(uiSliderState == UiSliderArbitrationState.Pending && System.Math.Abs(fr2.max - 0.5f) < 0.0001f, "FloatRange mutated on undecided MouseDown inside ScrollView");
+   // Horizontal drag commits range 2 even though range 1 draws first!
+   Contact(530, 346); SyncMouseGui(530, 346); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag;
+   Assert(!ProcessScrollViewTouch(rect, view, ref scroll), "FloatRange drag stolen by scroll");
+   Verse.Widgets.PatchedFloatRange(rangeRect1, 101, ref fr1, 0f, 1f);
+   Verse.Widgets.PatchedFloatRange(rangeRect2, 202, ref fr2, 0f, 1f);
+   Assert(uiSliderState == UiSliderArbitrationState.Committed && fr2.max > 0.7f && System.Math.Abs(fr1.max - 0.5f) < 0.0001f, "earlier FloatRange blocked second FloatRange commit");
+   // Vertical swipe on IntRange never mutates value and clears draggingId
+   ResetGesture();
+   var ir = new Verse.IntRange(2, 5);
+   scroll = new UnityEngine.Vector2(0, 120);
+   startGui = new UnityEngine.Vector2(500, 345);
+   Contact(500, 345); SyncMouseGui(500, 345); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDown;
+   ProcessScrollViewTouch(rect, view, ref scroll);
+   Verse.Widgets.PatchedIntRange(rangeRect2, 303, ref ir, 0, 10);
+   Assert(ir.max == 5, "IntRange mutated on undecided MouseDown");
+   Contact(501, 325); SyncMouseGui(501, 325); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag;
+   Assert(ProcessScrollViewTouch(rect, view, ref scroll) && uiScrollGestureActive && Verse.Widgets.DebugRangeDraggingId == 0, "vertical scroll on IntRange failed or leaked draggingId");
+   Verse.Widgets.PatchedIntRange(rangeRect2, 303, ref ir, 0, 10);
+   Assert(ir.max == 5, "IntRange mutated during vertical scroll");
+
+   // 5) Waylith GUI.HorizontalSlider: guards Layout/Repaint immediate writes while Pending, commits smoothly, clears on scroll
+   ResetGesture();
+   UnityEngine.Input.mouseHeld = true;
+   var guiSliderRect = new UnityEngine.Rect(20, 260, 400, 20);
+   float guiVal = 0.25f;
+   scroll = new UnityEngine.Vector2(0, 120);
+   startGui = new UnityEngine.Vector2(500, 340); // local (292, 268.7)
+   Contact(500, 340); SyncMouseGui(500, 340); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDown;
+   ProcessScrollViewTouch(rect, view, ref scroll);
+   guiVal = Verse.Widgets.PatchedGuiHorizontalSlider(guiSliderRect, guiVal, 0f, 1f);
+   Assert(uiSliderState == UiSliderArbitrationState.Pending && System.Math.Abs(guiVal - 0.25f) < 0.0001f && UnityEngine.GUI.DebugSliderDragId != 0, "GUI.HorizontalSlider mutated on undecided MouseDown");
+   // Repaint pass while still below slop must NOT mutate guiVal
+   Contact(503, 341); SyncMouseGui(503, 341); UnityEngine.Event.current.type = UnityEngine.EventType.Repaint;
+   guiVal = Verse.Widgets.PatchedGuiHorizontalSlider(guiSliderRect, guiVal, 0f, 1f);
+   Assert(System.Math.Abs(guiVal - 0.25f) < 0.0001f, "GUI.HorizontalSlider mutated on Pending Repaint pass");
+   // Horizontal drag commits and updates value even with large vertical drift
+   Contact(540, 341); SyncMouseGui(540, 341); UnityEngine.Event.current.type = UnityEngine.EventType.Repaint;
+   guiVal = Verse.Widgets.PatchedGuiHorizontalSlider(guiSliderRect, guiVal, 0f, 1f);
+   Assert(uiSliderState == UiSliderArbitrationState.Committed && guiVal > 0.7f, "GUI.HorizontalSlider failed to commit");
+   Contact(502, 410); SyncMouseGui(502, 410); UnityEngine.Event.current.type = UnityEngine.EventType.Repaint;
+   Assert(!ProcessScrollViewTouch(rect, view, ref scroll), "scroll stole committed GUI.HorizontalSlider");
+   guiVal = Verse.Widgets.PatchedGuiHorizontalSlider(guiSliderRect, guiVal, 0f, 1f);
+   Assert(System.Math.Abs(guiVal - ((502f - 208f - 20f) / 400f)) < 0.01f, "committed GUI.HorizontalSlider dropped update on vertical drift");
+   UnityEngine.Input.mouseHeld = false;
+
+   // 6) Bidirectional ScrollView (maxX > 1 && maxY > 1): Pending horizontal slider masks horizontal scroll
+   ResetGesture();
+   var biView = new UnityEngine.Rect(0, 0, 1400, 1200);
+   var biScroll = new UnityEngine.Vector2(100, 120);
+   float biVal = 0.5f;
+   startGui = new UnityEngine.Vector2(500, 338);
+   Contact(500, 338); SyncMouseGui(500, 338); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDown;
+   ProcessScrollViewTouch(rect, biView, ref biScroll);
+   biVal = Verse.Widgets.PatchedHorizontalSlider(sliderB, biVal, 0f, 1f);
+   Contact(530, 338); SyncMouseGui(530, 338); UnityEngine.Event.current.type = UnityEngine.EventType.MouseDrag;
+   Assert(!ProcessScrollViewTouch(rect, biView, ref biScroll) && !uiScrollGestureActive, "bidirectional ScrollView stole horizontal slider drag");
+   biVal = Verse.Widgets.PatchedHorizontalSlider(sliderB, biVal, 0f, 1f);
+   Assert(uiSliderState == UiSliderArbitrationState.Committed && biVal != 0.5f, "slider in bidirectional ScrollView did not commit");
+   ResetGesture();
 
    // ButtonInvisibleDraggable same-frame multi-pass dedup (Layout + MouseDown + MouseUp + Repaint)
    var targetParamName = typeof(Verse.Widgets).GetMethod("ButtonInvisibleDraggable").GetParameters()[0].Name;
@@ -283,9 +578,9 @@ $tap = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchTapRepair.cs'))
 $hit = [IO.File]::ReadAllText((Join-Path $root 'Source/UiHitTester.cs'))
 $boot = [IO.File]::ReadAllText((Join-Path $root 'Source/RimTouchBootstrap.cs'))
 $bFrom = $boot.IndexOf('    [HarmonyPatch(typeof(Widgets), "ButtonInvisibleDraggable"')
-$bTo = $boot.IndexOf('    [HarmonyPatch(typeof(Widgets), "HorizontalSlider"', $bFrom)
+$bTo = $boot.IndexOf('    [HarmonyPatch(typeof(Widgets), "BeginScrollView"', $bFrom)
 $draggablePatch = 'namespace RimTouch {' + $boot.Substring($bFrom, $bTo - $bFrom) + '}'
 $body = ($vel + "`n" + $scroll + "`n" + $tap + "`n" + $hit + "`n" + $draggablePatch) -replace '(?m)^using [^;]+;\r?\n',''
 Add-Type -WarningAction SilentlyContinue -CompilerOptions '/nowarn:0169,0649,0414' -TypeDefinition ("using System; using System.Collections.Generic; using System.Reflection; using HarmonyLib; using RimWorld; using RimWorld.Planet; using UnityEngine; using Verse; using RimTouch.TouchPlatform;`n" + $stubs + $body)
 [RimTouch.TouchInputDriver]::RunTests()
-'PASS UI touch: scaled coordinates, scroll claim/rejection, nested ScrollView priority & boundary handoff, slider jitter, ButtonInvisibleDraggable 4-pass dedup & drag-painting, accurate HUD & two-finger window hit-testing'
+'PASS UI touch: scaled coordinates, scroll claim/rejection, nested ScrollView priority & boundary handoff, slider-scroll arbitration & locking (HorizontalSlider/FloatRange/IntRange/GUI sliders), ButtonInvisibleDraggable 4-pass dedup & drag-painting, accurate HUD & two-finger window hit-testing'
