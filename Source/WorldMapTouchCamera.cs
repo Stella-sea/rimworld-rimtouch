@@ -79,6 +79,12 @@ namespace RimTouch
             }
         }
 
+        private const float WorldFreeLimbDampStartCos = 0.42f;
+        private const float WorldFreeLimbReleaseCos = 0.12f;
+        private const float WorldFreeReanchorCos = 0.28f;
+        private const float WorldFreeLimbOuterSpeedRatio = 1.0f;
+        private const float WorldFreeLimbInnerSpeedRatio = 2.4f;
+
         private static Vector2 PanWorldByGuiDelta(Vector2 previousGui, Vector2 currentGui)
         {
             WorldCameraDriver driver = Find.WorldCameraDriver;
@@ -97,33 +103,202 @@ namespace RimTouch
                 worldInertiaGui = currentGui;
                 return guiDelta;
             }
-            if (worldPanAnchorValid)
+
+            if (!worldFreeStartedOnGlobe)
             {
-                bool ok = KeepWorldPointUnderGui(driver, worldPanAnchorPoint, currentGui);
-                if (ok)
+                // Free mode requires grabbing the globe itself; starting a drag
+                // in empty space outside the globe must not rotate it.
+                worldInertiaAnchorValid = false;
+                return Vector2.zero;
+            }
+
+            return PanWorldFreeByGuiDelta(driver, previousGui, currentGui);
+        }
+
+        private static Vector2 PanWorldFreeByGuiDelta(WorldCameraDriver driver, Vector2 previousGui, Vector2 currentGui)
+        {
+            Vector2 guiDelta = currentGui - previousGui;
+            Vector3 currentHit;
+            float cosIncidence;
+            bool hitSphere = TryGetWorldSpherePointAtGui(currentGui, out currentHit, out cosIncidence);
+
+            if (!worldPanAnchorValid)
+            {
+                // Finger previously slipped off the globe limb. Re-grab cleanly
+                // once back inside the hysteresis threshold without snapping to
+                // the old start anchor.
+                if (hitSphere && cosIncidence >= WorldFreeReanchorCos)
+                {
+                    worldFreeLimbCoasting = false;
+                    worldPanVelocity = Vector2.zero;
+                    ClearInertiaSamples();
+                    worldPanAnchorPoint = currentHit;
+                    worldPanAnchorValid = true;
+                    worldInertiaAnchorValid = true;
+                    worldInertiaAnchorPoint = currentHit;
+                    worldInertiaGui = currentGui;
+                    lastWorldPanSampleTime = Time.realtimeSinceStartup;
+                    return Vector2.zero;
+                }
+
+                // Still outside the globe: let slip-off momentum coast smoothly,
+                // without letting empty-space movement push the globe.
+                if (worldFreeLimbCoasting)
+                {
+                    float dt = Mathf.Clamp(Time.unscaledDeltaTime, 0.001f, 0.05f);
+                    StepWorldFreeCoast(driver, dt);
+                }
+                return Vector2.zero;
+            }
+
+            if (!hitSphere || cosIncidence <= WorldFreeLimbReleaseCos)
+            {
+                BeginWorldFreeLimbCoast(driver, guiDelta);
+                if (worldFreeLimbCoasting)
+                {
+                    float dt = Mathf.Clamp(Time.unscaledDeltaTime, 0.001f, 0.05f);
+                    StepWorldFreeCoast(driver, dt);
+                }
+                return Vector2.zero;
+            }
+
+            if (cosIncidence >= WorldFreeLimbDampStartCos)
+            {
+                if (KeepWorldPointUnderGui(driver, worldPanAnchorPoint, currentGui))
                 {
                     worldInertiaAnchorValid = true;
                     worldInertiaAnchorPoint = worldPanAnchorPoint;
                     worldInertiaGui = currentGui;
+                    return guiDelta;
                 }
-                else
+
+                BeginWorldFreeLimbCoast(driver, guiDelta);
+                return Vector2.zero;
+            }
+
+            // Outer rim band: preserve the spherical grab direction while smoothly
+            // capping the grazing-ray singularity, then re-sync the anchor under
+            // the finger so reversing inward never snaps.
+            if (ApplyRimDampedWorldAnchor(driver, worldPanAnchorPoint, guiDelta, currentGui, cosIncidence))
+            {
+                Vector3 syncedPoint;
+                if (TryGetWorldSpherePointAtGui(currentGui, out syncedPoint))
                 {
-                    worldInertiaAnchorValid = false;
+                    worldPanAnchorPoint = syncedPoint;
                 }
+                worldInertiaAnchorValid = true;
+                worldInertiaAnchorPoint = worldPanAnchorPoint;
+                worldInertiaGui = currentGui;
                 return guiDelta;
             }
 
-            Vector2 rotationDelta = GetWorldRotationDeltaFromGuiDelta(driver, previousGui, currentGui);
-            ApplyWorldCameraDolly(driver, rotationDelta);
-            worldInertiaAnchorValid = false;
-            return guiDelta;
+            BeginWorldFreeLimbCoast(driver, guiDelta);
+            return Vector2.zero;
         }
 
-        private static Vector2 GetWorldRotationDeltaFromGuiDelta(WorldCameraDriver driver, Vector2 previousGui, Vector2 currentGui)
+        private static bool ApplyRimDampedWorldAnchor(WorldCameraDriver driver, Vector3 anchorPoint, Vector2 guiDelta, Vector2 currentGui, float cosIncidence)
         {
-            Vector2 delta = currentGui - previousGui;
-            float altitudeFactor = Mathf.Lerp(0.4f, 1.4f, Mathf.Clamp01(driver.AltitudePercent));
-            return new Vector2(delta.x, -delta.y) * WorldPanPixelsToRotation * altitudeFactor;
+            if (driver == null)
+            {
+                return false;
+            }
+            if (guiDelta.sqrMagnitude <= 0.00000001f)
+            {
+                return true;
+            }
+
+            Quaternion deltaRotation;
+            if (!TryComputeWorldAnchorDelta(driver, anchorPoint, currentGui, out deltaRotation))
+            {
+                return false;
+            }
+
+            float freeStepDegrees = ComputeFreeScreenDragDegrees(driver, guiDelta);
+            if (freeStepDegrees > 0f)
+            {
+                float t = Mathf.InverseLerp(WorldFreeLimbReleaseCos, WorldFreeLimbDampStartCos, cosIncidence);
+                float smoothT = t * t * (3f - 2f * t);
+                float maxRimDegrees = freeStepDegrees * Mathf.Lerp(WorldFreeLimbOuterSpeedRatio, WorldFreeLimbInnerSpeedRatio, smoothT);
+                float rotationAngle = Quaternion.Angle(Quaternion.identity, deltaRotation);
+                if (rotationAngle > maxRimDegrees && rotationAngle > 0.000001f)
+                {
+                    deltaRotation = Quaternion.Slerp(Quaternion.identity, deltaRotation, maxRimDegrees / rotationAngle);
+                }
+            }
+
+            return CommitWorldRotation(driver, driver.sphereRotation * deltaRotation);
+        }
+
+        private static void BeginWorldFreeLimbCoast(WorldCameraDriver driver, Vector2 exitGuiDelta)
+        {
+            worldPanAnchorValid = false;
+            worldPanAnchorPoint = Vector3.zero;
+            if (driver == null || PanInertiaStrength <= 0f
+                || GetWorldPoleFactor(driver) >= WorldPoleInertiaDisable)
+            {
+                worldFreeLimbCoasting = false;
+                worldPanVelocity = Vector2.zero;
+                worldInertiaAnchorValid = false;
+                return;
+            }
+
+            float now = Time.realtimeSinceStartup;
+            if (!GlobeTwist.HasTwisted && !WorldPanVelocityHistory.HasSamples && exitGuiDelta != Vector2.zero)
+            {
+                SampleWorldPanVelocity(exitGuiDelta);
+            }
+
+            Vector2 recentVelocity = GetRecentWorldPanVelocity(now);
+            float stopSpeed = GetWorldPanInertiaStopSpeed(driver);
+            if (!IsFinite(recentVelocity) || recentVelocity.sqrMagnitude <= stopSpeed * stopSpeed)
+            {
+                worldFreeLimbCoasting = false;
+                worldPanVelocity = Vector2.zero;
+                worldInertiaAnchorValid = false;
+                return;
+            }
+
+            worldPanVelocity = recentVelocity;
+            worldFreeLimbCoasting = true;
+            worldInertiaAnchorValid = true;
+        }
+
+        private static void StepWorldFreeCoast(WorldCameraDriver driver, float dt)
+        {
+            if (!worldFreeLimbCoasting || driver == null || PanInertiaStrength <= 0f
+                || GetWorldPoleFactor(driver) >= WorldPoleInertiaDisable)
+            {
+                worldFreeLimbCoasting = false;
+                worldPanVelocity = Vector2.zero;
+                worldInertiaAnchorValid = false;
+                return;
+            }
+
+            float stopSpeed = GetWorldPanInertiaStopSpeed(driver);
+            if (worldPanVelocity.sqrMagnitude <= stopSpeed * stopSpeed)
+            {
+                worldFreeLimbCoasting = false;
+                worldPanVelocity = Vector2.zero;
+                worldInertiaAnchorValid = false;
+                return;
+            }
+
+            Vector2 inertiaGuiDelta = worldPanVelocity * PanInertiaStrength * WorldPanInertiaStrengthScale * GetWorldPanInertiaMoveScale(driver) * dt;
+            if (!ApplyFreeScreenDrag(driver, inertiaGuiDelta))
+            {
+                worldFreeLimbCoasting = false;
+                worldPanVelocity = Vector2.zero;
+                worldInertiaAnchorValid = false;
+                return;
+            }
+
+            worldPanVelocity *= Mathf.Exp(-GetWorldPanInertiaDamping(driver) * dt);
+            if (worldPanVelocity.sqrMagnitude <= stopSpeed * stopSpeed)
+            {
+                worldFreeLimbCoasting = false;
+                worldPanVelocity = Vector2.zero;
+                worldInertiaAnchorValid = false;
+            }
         }
 
         // Free-mode anchor correction in world space. The geographic point is
@@ -380,12 +555,11 @@ namespace RimTouch
 
             // Calibrate at the visible surface center, with no limb singularity.
             // Camera FOV is vertical; pixelHeight is the actual camera viewport.
-            float radius = GetWorldSphereRadius(driver);
-            float distance = (camera.transform.position - GetWorldSphereCenter(driver)).magnitude;
-            float surfaceDistance = Mathf.Max(distance - radius, 1f);
-            float fovRadians = Mathf.Clamp(camera.fieldOfView, 5f, 170f) * Mathf.Deg2Rad;
-            float degreesPerPixel = 2f * surfaceDistance * Mathf.Tan(fovRadians * 0.5f)
-                / (camera.pixelHeight * radius) * Mathf.Rad2Deg;
+            float degreesPerPixel;
+            if (!TryGetWorldDegreesPerPixel(driver, out degreesPerPixel))
+            {
+                return false;
+            }
             float sensitivity = RimTouchMod.Settings != null ? RimTouchMod.Settings.turntableDragSensitivity : 1f;
             if (float.IsNaN(sensitivity) || float.IsInfinity(sensitivity))
             {
@@ -438,9 +612,80 @@ namespace RimTouch
                 -cameraRotation.z, cameraRotation.w));
         }
 
+        private static bool TryGetWorldDegreesPerPixel(WorldCameraDriver driver, out float degreesPerPixel)
+        {
+            degreesPerPixel = 0f;
+            Camera camera = GetWorldCamera(driver);
+            if (camera == null || camera.pixelHeight <= 0 || Screen.width <= 0 || Screen.height <= 0 || UI.screenWidth <= 0 || UI.screenHeight <= 0)
+            {
+                return false;
+            }
+
+            float radius = GetWorldSphereRadius(driver);
+            float distance = (camera.transform.position - GetWorldSphereCenter(driver)).magnitude;
+            float surfaceDistance = Mathf.Max(distance - radius, 1f);
+            float fovRadians = Mathf.Clamp(camera.fieldOfView, 5f, 170f) * Mathf.Deg2Rad;
+            degreesPerPixel = 2f * surfaceDistance * Mathf.Tan(fovRadians * 0.5f)
+                / (camera.pixelHeight * radius) * Mathf.Rad2Deg;
+            return !float.IsNaN(degreesPerPixel) && !float.IsInfinity(degreesPerPixel) && degreesPerPixel > 0f;
+        }
+
+        private static float ComputeFreeScreenDragDegrees(WorldCameraDriver driver, Vector2 guiDelta)
+        {
+            float degreesPerPixel;
+            if (!IsFinite(guiDelta) || guiDelta.sqrMagnitude <= 0.00000001f || !TryGetWorldDegreesPerPixel(driver, out degreesPerPixel))
+            {
+                return 0f;
+            }
+
+            float dxPixels = guiDelta.x * Screen.width / UI.screenWidth;
+            float dyPixels = guiDelta.y * Screen.height / UI.screenHeight;
+            return Mathf.Sqrt(dxPixels * dxPixels + dyPixels * dyPixels) * degreesPerPixel;
+        }
+
+        private static bool ApplyFreeScreenDrag(WorldCameraDriver driver, Vector2 guiDelta)
+        {
+            if (driver == null || !IsFinite(guiDelta))
+            {
+                return false;
+            }
+            if (guiDelta.sqrMagnitude <= 0.00000001f)
+            {
+                return true;
+            }
+
+            float degreesPerPixel;
+            if (!TryGetWorldDegreesPerPixel(driver, out degreesPerPixel))
+            {
+                return false;
+            }
+
+            float yawDegrees = guiDelta.x * Screen.width / UI.screenWidth * degreesPerPixel;
+            float pitchDegrees = guiDelta.y * Screen.height / UI.screenHeight * degreesPerPixel;
+            float angleDegrees = Mathf.Sqrt(yawDegrees * yawDegrees + pitchDegrees * pitchDegrees);
+            if (float.IsNaN(angleDegrees) || float.IsInfinity(angleDegrees) || angleDegrees <= 0.000001f)
+            {
+                return true;
+            }
+
+            // View-space axis perpendicular to the screen displacement. Left-multiplying
+            // sphereRotation (R' = Inverse(deltaCam) * R) moves the visible surface
+            // smoothly along the flick direction without a limb boundary.
+            Vector3 viewAxis = new Vector3(pitchDegrees / angleDegrees, yawDegrees / angleDegrees, 0f);
+            Quaternion next = Quaternion.AngleAxis(-angleDegrees, viewAxis) * driver.sphereRotation;
+            return CommitWorldRotation(driver, next);
+        }
+
         private static bool TryGetWorldSpherePointAtGui(Vector2 gui, out Vector3 point)
         {
+            float unusedCosIncidence;
+            return TryGetWorldSpherePointAtGui(gui, out point, out unusedCosIncidence);
+        }
+
+        private static bool TryGetWorldSpherePointAtGui(Vector2 gui, out Vector3 point, out float cosIncidence)
+        {
             point = Vector3.zero;
+            cosIncidence = 0f;
             WorldCameraDriver driver = Find.WorldCameraDriver;
             Camera camera = GetWorldCamera(driver);
             if (driver == null || camera == null)
@@ -473,7 +718,13 @@ namespace RimTouch
             }
 
             point = ray.origin + ray.direction * distance;
-            return IsFinite(point);
+            if (!IsFinite(point))
+            {
+                return false;
+            }
+
+            cosIncidence = radius > 0.0001f ? Mathf.Clamp01(root / radius) : 0f;
+            return true;
         }
 
         private static Vector3 GetWorldSphereCenter(WorldCameraDriver driver)
@@ -601,28 +852,6 @@ namespace RimTouch
 
             Camera camera;
             return ReflectionGuard.TryGetField(WorldCameraCachedCameraField, driver, out camera) ? camera : null;
-        }
-
-        private static void ApplyWorldCameraDolly(WorldCameraDriver driver, Vector2 dolly)
-        {
-            if (float.IsNaN(dolly.x) || float.IsInfinity(dolly.x) || float.IsNaN(dolly.y) || float.IsInfinity(dolly.y))
-            {
-                return;
-            }
-
-            if (driver == null)
-            {
-                return;
-            }
-
-            Vector2 pending = pendingWorldCameraDolly + dolly;
-            if (!IsFinite(pending))
-            {
-                pendingWorldCameraDolly = Vector2.zero;
-                return;
-            }
-
-            pendingWorldCameraDolly = pending;
         }
 
         public static Vector2 ModifyWorldCameraInput(WorldCameraDriver driver, Vector2 vanillaInput)

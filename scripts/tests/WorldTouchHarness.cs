@@ -251,7 +251,7 @@ namespace RimTouch
         static bool TrySelectFromTwoFingerDraftedTap() => false;
         static bool TryDoDraftedPawnTapCommand(Vector2 p) => false;
         static void DoMapLeftClick(Vector2 p) { }
-        static void FinishTouch() { mode = TouchMode.None; worldPanAnchorValid = false; }
+        static void FinishTouch() { mode = TouchMode.None; worldPanAnchorValid = false; worldFreeStartedOnGlobe = false; worldFreeLimbCoasting = false; }
         static bool TryGetCameraRootPos(CameraDriver d, out Vector3 p) { p = Vector3.zero; return true; }
         static bool TryGetCameraRootSize(CameraDriver d, out float s) { s = 10; return true; }
         static float GetMinZoomSize(CameraDriver d) => 1;
@@ -278,7 +278,7 @@ namespace RimTouch
             RimTouchMod.Settings = new TestSettings();
             Screen.width = UI.screenWidth = 1600; Screen.height = UI.screenHeight = 900;
             StopInertia(); ClearInertiaSamples(); CancelNorthReturn();
-            mode = TouchMode.None; worldPanAnchorValid = false; uiScrollGestureActive = false;
+            mode = TouchMode.None; worldPanAnchorValid = false; worldFreeStartedOnGlobe = false; worldFreeLimbCoasting = false; uiScrollGestureActive = false;
             startedOverUi = suppressReleaseTap = rightClickDone = worldDoubleTapPrimed = blockingWindow = false;
             queuedUiTaps = worldBoxes = 0;
             d.ApplyPositionToGameObject();
@@ -292,7 +292,7 @@ namespace RimTouch
         static void Begin(Vector2 p)
         {
             mode = TouchMode.OneFinger; startGui = lastGui = p; startTime = Time.realtimeSinceStartup;
-            panGestureDistance = 0; worldPanAnchorValid = false; suppressReleaseTap = false;
+            panGestureDistance = 0; worldPanAnchorValid = false; worldFreeStartedOnGlobe = false; worldFreeLimbCoasting = false; suppressReleaseTap = false;
         }
 
         public static void RunWorldTouchTests()
@@ -504,6 +504,161 @@ namespace RimTouch
                 Assert(driver.rotationAnimation_lerpFactor == 1, "free anchor left native animation running");
             }
             Console.WriteLine($"PASS free anchor at nonzero world poses; maximum projection error {maxAnchorError:F6} GUI pixels; animations cancelled");
+
+            // Free mode keeps its globe-grab identity: dragging from outside the globe
+            // must not rotate it, while outside taps and double-tap drag-box still work.
+            driver = Setup(0, 0, 0);
+            driver.altitude = driver.desiredAltitude = 320;
+            driver.ApplyPositionToGameObject();
+            RimTouchMod.Settings.lockNorthUpOnDrag = false;
+            Vector2 freeOutside = new Vector2(50, 50);
+            Begin(freeOutside);
+            UpdateOneFingerWorld(Contact(freeOutside, ContactPhase.Ended), freeOutside);
+            Assert(Find.WorldSelector.Clears == 1 && !Find.WorldSelector.HasSelection && driver.Applies == 2, "free mode outside tap failed");
+
+            driver = Setup(0, 0, 0);
+            driver.altitude = driver.desiredAltitude = 320;
+            driver.ApplyPositionToGameObject();
+            RimTouchMod.Settings.lockNorthUpOnDrag = false;
+            Begin(freeOutside);
+            int outsideStartApplies = driver.Applies;
+            for (int step = 1; step <= 10; step++)
+            {
+                Time.realtimeSinceStartup += .016f;
+                Vector2 pOut = new Vector2(50 + step * 75, 50 + step * 40);
+                UpdateOneFingerWorld(Contact(pOut), pOut);
+            }
+            Time.realtimeSinceStartup += .016f;
+            UpdateOneFingerWorld(Contact(lastGui, ContactPhase.Ended), lastGui);
+            Assert(driver.Applies == outsideStartApplies && pendingWorldCameraDolly == Vector2.zero && worldPanVelocity == Vector2.zero,
+                "free mode outside-start drag rotated the globe");
+            Assert(Find.WorldSelector.Clears == 0 && Find.WorldSelector.HasSelection,
+                "free mode outside-start drag cleared selection on release");
+
+            driver = Setup(0, 0, 0);
+            driver.altitude = driver.desiredAltitude = 320;
+            driver.ApplyPositionToGameObject();
+            RimTouchMod.Settings.lockNorthUpOnDrag = false;
+            Begin(freeOutside); worldDoubleTapPrimed = true;
+            UpdateOneFingerWorld(Contact(freeOutside + new Vector2(40, 30)), freeOutside + new Vector2(40, 30));
+            Assert(mode == TouchMode.WorldDragBox && worldBoxes == 1 && driver.Applies == 2,
+                "free mode outside double-tap drag-box regressed");
+
+            // Free mode swipe across the globe limb: no grazing-ray spike before edge,
+            // natural slip-off coasting across the edge (no sudden hard stop), no
+            // empty-space pushing after coast settles, and jump-free re-anchor on re-entry.
+            driver = Setup(0, 0, 0);
+            driver.altitude = driver.desiredAltitude = 320;
+            driver.ApplyPositionToGameObject();
+            RimTouchMod.Settings.lockNorthUpOnDrag = false;
+            float centerStepDeg = ComputeFreeScreenDragDegrees(driver, new Vector2(12, 0));
+            Begin(new Vector2(800, 450));
+            float maxRimStepDeg = 0f;
+            bool sawCoast = false;
+            float firstCoastStepDeg = 0f;
+            for (int step = 1; step <= 44; step++)
+            {
+                Time.realtimeSinceStartup += .016f;
+                Vector2 cur = new Vector2(800 + step * 12, 450);
+                Quaternion beforeStep = driver.sphereRotation;
+                UpdateOneFingerWorld(Contact(cur), cur);
+                float stepDeg = Quaternion.Angle(beforeStep, driver.sphereRotation);
+                if (step > 2)
+                {
+                    maxRimStepDeg = Math.Max(maxRimStepDeg, stepDeg);
+                }
+                if (!sawCoast && worldFreeLimbCoasting)
+                {
+                    sawCoast = true;
+                    firstCoastStepDeg = stepDeg;
+                }
+            }
+            Assert(sawCoast && firstCoastStepDeg > 0.05f, $"free limb slip-off did not start smooth coasting (sawCoast={sawCoast}, firstStep={firstCoastStepDeg:F4})");
+            Assert(maxRimStepDeg < centerStepDeg * 3.2f, $"free limb grazing spike not damped (maxStep={maxRimStepDeg:F3} vs center={centerStepDeg:F3})");
+
+            // Release mid-coast: inertia must hand off seamlessly to UpdateWorldInertia
+            // and keep turning smoothly in the flick direction without hitting a limb wall.
+            Assert(worldFreeLimbCoasting && worldPanVelocity.x > 0, "expected active off-limb coast before lift");
+            Time.realtimeSinceStartup += .016f;
+            UpdateOneFingerWorld(Contact(lastGui, ContactPhase.Ended), lastGui);
+            Assert(!worldFreeLimbCoasting && worldInertiaAnchorValid && worldPanVelocity.x > 0,
+                "free limb coast did not hand off velocity on finger lift");
+            Vector3 coastMarker = driver.layerOriginOffset - (Quaternion.Inverse(driver.sphereRotation) * Vector3.forward) * WorldCameraDriver.SphereRadius;
+            Vector2 coastBefore = driver.cachedCamera.ProjectGui(coastMarker);
+            UpdateWorldInertia(.016f);
+            Vector2 coastMoved = driver.cachedCamera.ProjectGui(coastMarker) - coastBefore;
+            Assert(coastMoved.x > 0.1f && Math.Abs(coastMoved.y) < Math.Abs(coastMoved.x) * 0.05f,
+                $"post-limb inertia moved wrong direction ({coastMoved.x:F3}, {coastMoved.y:F3})");
+
+            // While held outside after coast settles, moving in empty space must not push
+            // the globe; re-entering the interior re-anchors without jumping to old start.
+            driver = Setup(0, 0, 0);
+            driver.altitude = driver.desiredAltitude = 320;
+            driver.ApplyPositionToGameObject();
+            RimTouchMod.Settings.lockNorthUpOnDrag = false;
+            Begin(new Vector2(800, 450));
+            for (int step = 1; step <= 44; step++)
+            {
+                Time.realtimeSinceStartup += .016f;
+                UpdateOneFingerWorld(Contact(new Vector2(800 + step * 12, 450)), new Vector2(800 + step * 12, 450));
+            }
+            for (int settle = 0; settle < 120; settle++)
+            {
+                Time.realtimeSinceStartup += .016f;
+                Vector2 wander = new Vector2(1380 + (settle % 2 == 0 ? 20 : -20), 250 + (settle % 5) * 40);
+                UpdateOneFingerWorld(Contact(wander), wander);
+            }
+            Assert(!worldFreeLimbCoasting && !worldPanAnchorValid, "off-limb coast did not settle");
+            int settledApplies = driver.Applies;
+            for (int extra = 0; extra < 10; extra++)
+            {
+                Time.realtimeSinceStartup += .016f;
+                Vector2 push = new Vector2(1420, 200 + extra * 30);
+                UpdateOneFingerWorld(Contact(push), push);
+            }
+            Assert(driver.Applies == settledApplies, "empty-space movement pushed globe after coast settled");
+            Quaternion beforeReentry = driver.sphereRotation;
+            Time.realtimeSinceStartup += .016f;
+            Vector2 reentry = new Vector2(1020, 450);
+            UpdateOneFingerWorld(Contact(reentry), reentry);
+            Assert(worldPanAnchorValid && Quaternion.Angle(beforeReentry, driver.sphereRotation) < 0.001f,
+                "re-entering globe jumped instead of re-anchoring cleanly");
+            Vector3 newAnchor = worldPanAnchorPoint;
+            Time.realtimeSinceStartup += .016f;
+            Vector2 dragBack = new Vector2(1000, 450);
+            UpdateOneFingerWorld(Contact(dragBack), dragBack);
+            Assert(Vector2.Distance(driver.cachedCamera.ProjectGui(newAnchor), dragBack) < 0.05f,
+                "re-anchored free drag did not track newly grabbed point");
+
+            // Free-mode interior flick inertia at nonzero roll must not stop abruptly
+            // when a virtual screen cursor would have crossed the globe silhouette.
+            driver = Setup(40, 20, 37);
+            driver.altitude = driver.desiredAltitude = 320;
+            driver.ApplyPositionToGameObject();
+            RimTouchMod.Settings.lockNorthUpOnDrag = false;
+            Begin(new Vector2(1050, 450));
+            for (int step = 1; step <= 5; step++)
+            {
+                Time.realtimeSinceStartup += .016f;
+                UpdateOneFingerWorld(Contact(new Vector2(1050 + step * 18, 450)), new Vector2(1050 + step * 18, 450));
+            }
+            Time.realtimeSinceStartup += .016f;
+            UpdateOneFingerWorld(Contact(lastGui, ContactPhase.Ended), lastGui);
+            Assert(worldInertiaAnchorValid && worldPanVelocity.x > 200f, "free interior flick failed to launch inertia");
+            float prevSpeed = worldPanVelocity.magnitude;
+            for (int f = 0; f < 30; f++)
+            {
+                Vector3 m = driver.layerOriginOffset - (Quaternion.Inverse(driver.sphereRotation) * Vector3.forward) * WorldCameraDriver.SphereRadius;
+                Vector2 bGui = driver.cachedCamera.ProjectGui(m);
+                UpdateWorldInertia(.016f);
+                Vector2 deltaGui = driver.cachedCamera.ProjectGui(m) - bGui;
+                Assert(deltaGui.x > 0f && Math.Abs(deltaGui.y) < Math.Abs(deltaGui.x) * 0.05f,
+                    $"free inertia deviated at rolled pose frame {f}: ({deltaGui.x:F3}, {deltaGui.y:F3})");
+                Assert(worldPanVelocity.magnitude < prevSpeed, "free inertia did not decay monotonically");
+                prevSpeed = worldPanVelocity.magnitude;
+            }
+            Assert(worldPanVelocity.magnitude > 20f, "free inertia stopped prematurely at limb boundary");
+            Console.WriteLine($"PASS free mode outside isolation, limb damping (max {maxRimStepDeg:F2}deg vs center {centerStepDeg:F2}deg), natural slip-off coast, jump-free re-anchor, and boundary-free inertia");
         }
     }
 }
