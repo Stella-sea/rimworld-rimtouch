@@ -9,8 +9,17 @@ suffix is a stable release.
 
 ## [Unreleased]
 
-- Nothing yet. The next test build goes here first, then moves under
-  its version heading when tagged.
+- Rebuilt dual-axis world orbit around RimWorld's moving-camera model.
+  Single-finger drags, two-finger midpoint movement, and inertia share a
+  screen-relative turntable that preserves the current roll and limits pitch
+  near the poles. Empty space around the globe also accepts drags; taps still
+  clear selection, and dragging back to the start does not become a tap.
+- Corrected free-anchor rotation multiplication, stopped native rotation
+  animations during direct touch rotation, and kept dual-axis twist as pure
+  view roll. The native north-up control remains available.
+- Added isolated world-camera/gesture regression tests and three behavioral
+  negative controls to CI. Hardware acceptance is pending; settings keys,
+  defaults, and release version are unchanged.
 
 ## [0.1.0-test.15] — 2026-11-24
 

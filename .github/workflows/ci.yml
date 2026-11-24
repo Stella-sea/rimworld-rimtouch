@@ -54,3 +54,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & pwsh -NoProfile -File ./scripts/test-settings-layout.ps1 -VerifyRegression
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: World orbit, selection, and negative controls
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -File ./scripts/test-world-touch.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & pwsh -NoProfile -File ./scripts/test-world-touch.ps1 -VerifyRegression
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

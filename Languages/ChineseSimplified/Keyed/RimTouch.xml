@@ -11,7 +11,7 @@
   <RimTouch.TwistCommitDegrees>旋转触发角度：</RimTouch.TwistCommitDegrees>
   <RimTouch.TwistCommitDegreesDesc>双指扭转多少度才开始旋转。越大越难在缩放或拖动时误触；一旦手势被判定为缩放或拖动，本次手势内不再触发旋转。</RimTouch.TwistCommitDegreesDesc>
   <RimTouch.LockNorthUpOnDrag>双轴模式</RimTouch.LockNorthUpOnDrag>
-  <RimTouch.LockNorthUpOnDragDesc>单指拖动地球时用双轴转盘：横向拖动绕北极旋转、纵向拖动绕屏幕横轴俯仰，拖动本身不产生滚转，北向保持拖动开始时的朝向。关闭则恢复自由旋转的拖动（抓点跟随手指，含滚转）。</RimTouch.LockNorthUpOnDragDesc>
+  <RimTouch.LockNorthUpOnDragDesc>在地球或球外空白处拖动，按手指的屏幕方向平滑转球，保持当前北向倾角；接近南北极时限制俯仰，避免倒置。双指扭转可改变北向倾角。点按球外空白仍会取消选择。关闭则使用含滚转的自由抓点拖动。</RimTouch.LockNorthUpOnDragDesc>
   <RimTouch.AutoReturnNorth>自动回正到北方（双轴模式关闭时）</RimTouch.AutoReturnNorth>
   <RimTouch.AutoReturnNorthDesc>双轴模式关闭时，单指拖动开始时缓慢将地球转回正北方向。关闭后，视角保持在双指旋转后的方向，不再自动回正。</RimTouch.AutoReturnNorthDesc>
   <RimTouch.NorthReturnDuration>回正到北方所需时间：</RimTouch.NorthReturnDuration>
