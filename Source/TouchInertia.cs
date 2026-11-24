@@ -6,11 +6,16 @@ using RimWorld;
 using RimWorld.Planet;
 using UnityEngine;
 using Verse;
+using RimTouch.TouchPlatform;
 
 namespace RimTouch
 {
     public static partial class TouchInputDriver
     {
+        private static readonly VelocityHistory PanVelocityHistory = new VelocityHistory(6, 0.14f);
+        private static readonly VelocityHistory WorldPanVelocityHistory = new VelocityHistory(6, 0.14f);
+        private static readonly VelocityHistory ZoomVelocityHistory = new VelocityHistory(6, 0.14f);
+
         private static void SamplePanVelocityFromMapDelta(Vector3 mapDelta)
         {
             float now = Time.realtimeSinceStartup;
@@ -34,7 +39,7 @@ namespace RimTouch
                 velocity = velocity.normalized * MaxPanInertiaSpeed;
             }
 
-            RecordPanVelocitySample(velocity, now);
+            PanVelocityHistory.Record(velocity, now);
             panVelocity = GetRecentPanVelocity(now);
         }
 
@@ -56,7 +61,7 @@ namespace RimTouch
             }
 
             velocity = Mathf.Clamp(velocity, -MaxZoomInertiaSpeed, MaxZoomInertiaSpeed);
-            RecordZoomVelocitySample(velocity, now);
+            ZoomVelocityHistory.Record1D(velocity, now);
             zoomVelocity = GetRecentZoomVelocity(now);
         }
 
@@ -299,82 +304,14 @@ namespace RimTouch
 
         private static void ClearInertiaSamples()
         {
-            ClearPanVelocitySamples();
-            ClearWorldPanVelocitySamples();
-            ClearZoomVelocitySamples();
-        }
-
-        private static void ClearPanVelocitySamples()
-        {
-            panVelocitySampleIndex = 0;
-            panVelocitySampleCount = 0;
-            for (int i = 0; i < PanVelocitySamples.Length; i++)
-            {
-                PanVelocitySamples[i] = Vector3.zero;
-                PanVelocitySampleTimes[i] = 0f;
-            }
-        }
-
-        private static void ClearZoomVelocitySamples()
-        {
-            zoomVelocitySampleIndex = 0;
-            zoomVelocitySampleCount = 0;
-            for (int i = 0; i < ZoomVelocitySamples.Length; i++)
-            {
-                ZoomVelocitySamples[i] = 0f;
-                ZoomVelocitySampleTimes[i] = 0f;
-            }
-        }
-
-        private static void RecordPanVelocitySample(Vector3 velocity, float time)
-        {
-            PanVelocitySamples[panVelocitySampleIndex] = velocity;
-            PanVelocitySampleTimes[panVelocitySampleIndex] = time;
-            panVelocitySampleIndex = (panVelocitySampleIndex + 1) % PanVelocitySamples.Length;
-            panVelocitySampleCount = Mathf.Min(panVelocitySampleCount + 1, PanVelocitySamples.Length);
+            PanVelocityHistory.Clear();
+            WorldPanVelocityHistory.Clear();
+            ZoomVelocityHistory.Clear();
         }
 
         private static Vector3 GetRecentPanVelocity(float now)
         {
-            if (panVelocitySampleCount <= 0)
-            {
-                return panVelocity;
-            }
-
-            Vector3 sum = Vector3.zero;
-            float totalWeight = 0f;
-            for (int i = 0; i < panVelocitySampleCount; i++)
-            {
-                int index = (panVelocitySampleIndex - 1 - i + PanVelocitySamples.Length) % PanVelocitySamples.Length;
-                float age = now - PanVelocitySampleTimes[index];
-                if (age < 0f || age > PanVelocityHistorySeconds)
-                {
-                    continue;
-                }
-
-                float recencyWeight = Mathf.Clamp01(1f - age / PanVelocityHistorySeconds);
-                float orderWeight = 1f / (1f + i * 0.35f);
-                float weight = Mathf.Max(0.05f, recencyWeight) * orderWeight;
-                sum += PanVelocitySamples[index] * weight;
-                totalWeight += weight;
-            }
-
-            if (totalWeight <= 0f)
-            {
-                return Vector3.zero;
-            }
-            return sum / totalWeight;
-        }
-
-        private static void ClearWorldPanVelocitySamples()
-        {
-            worldPanVelocitySampleIndex = 0;
-            worldPanVelocitySampleCount = 0;
-            for (int i = 0; i < WorldPanVelocitySamples.Length; i++)
-            {
-                WorldPanVelocitySamples[i] = Vector2.zero;
-                WorldPanVelocitySampleTimes[i] = 0f;
-            }
+            return PanVelocityHistory.HasSamples ? PanVelocityHistory.GetWeightedAverage(now) : panVelocity;
         }
 
         private static void SampleWorldPanVelocity(Vector2 guiDelta)
@@ -399,88 +336,18 @@ namespace RimTouch
                 velocity = velocity.normalized * MaxWorldPanInertiaSpeed;
             }
 
-            RecordWorldPanVelocitySample(velocity, now);
+            WorldPanVelocityHistory.Record2D(velocity, now);
             worldPanVelocity = GetRecentWorldPanVelocity(now);
-        }
-
-        private static void RecordWorldPanVelocitySample(Vector2 velocity, float time)
-        {
-            WorldPanVelocitySamples[worldPanVelocitySampleIndex] = velocity;
-            WorldPanVelocitySampleTimes[worldPanVelocitySampleIndex] = time;
-            worldPanVelocitySampleIndex = (worldPanVelocitySampleIndex + 1) % WorldPanVelocitySamples.Length;
-            worldPanVelocitySampleCount = Mathf.Min(worldPanVelocitySampleCount + 1, WorldPanVelocitySamples.Length);
         }
 
         private static Vector2 GetRecentWorldPanVelocity(float now)
         {
-            if (worldPanVelocitySampleCount <= 0)
-            {
-                return worldPanVelocity;
-            }
-
-            Vector2 sum = Vector2.zero;
-            float totalWeight = 0f;
-            for (int i = 0; i < worldPanVelocitySampleCount; i++)
-            {
-                int index = (worldPanVelocitySampleIndex - 1 - i + WorldPanVelocitySamples.Length) % WorldPanVelocitySamples.Length;
-                float age = now - WorldPanVelocitySampleTimes[index];
-                if (age < 0f || age > WorldPanVelocityHistorySeconds)
-                {
-                    continue;
-                }
-
-                float recencyWeight = Mathf.Clamp01(1f - age / WorldPanVelocityHistorySeconds);
-                float orderWeight = 1f / (1f + i * 0.35f);
-                float weight = Mathf.Max(0.05f, recencyWeight) * orderWeight;
-                sum += WorldPanVelocitySamples[index] * weight;
-                totalWeight += weight;
-            }
-
-            if (totalWeight <= 0f)
-            {
-                return Vector2.zero;
-            }
-            return sum / totalWeight;
-        }
-
-        private static void RecordZoomVelocitySample(float velocity, float time)
-        {
-            ZoomVelocitySamples[zoomVelocitySampleIndex] = velocity;
-            ZoomVelocitySampleTimes[zoomVelocitySampleIndex] = time;
-            zoomVelocitySampleIndex = (zoomVelocitySampleIndex + 1) % ZoomVelocitySamples.Length;
-            zoomVelocitySampleCount = Mathf.Min(zoomVelocitySampleCount + 1, ZoomVelocitySamples.Length);
+            return WorldPanVelocityHistory.HasSamples ? WorldPanVelocityHistory.GetWeightedAverage2D(now) : worldPanVelocity;
         }
 
         private static float GetRecentZoomVelocity(float now)
         {
-            if (zoomVelocitySampleCount <= 0)
-            {
-                return zoomVelocity;
-            }
-
-            float sum = 0f;
-            float totalWeight = 0f;
-            for (int i = 0; i < zoomVelocitySampleCount; i++)
-            {
-                int index = (zoomVelocitySampleIndex - 1 - i + ZoomVelocitySamples.Length) % ZoomVelocitySamples.Length;
-                float age = now - ZoomVelocitySampleTimes[index];
-                if (age < 0f || age > ZoomVelocityHistorySeconds)
-                {
-                    continue;
-                }
-
-                float recencyWeight = Mathf.Clamp01(1f - age / ZoomVelocityHistorySeconds);
-                float orderWeight = 1f / (1f + i * 0.35f);
-                float weight = Mathf.Max(0.05f, recencyWeight) * orderWeight;
-                sum += ZoomVelocitySamples[index] * weight;
-                totalWeight += weight;
-            }
-
-            if (totalWeight <= 0f)
-            {
-                return 0f;
-            }
-            return sum / totalWeight;
+            return ZoomVelocityHistory.HasSamples ? ZoomVelocityHistory.GetWeightedAverage1D(now) : zoomVelocity;
         }
 
         private static bool IsFinite(Vector3 vector)

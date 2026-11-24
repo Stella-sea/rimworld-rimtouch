@@ -3,6 +3,9 @@
   <RimTouch.EnableTouchMode>启用触控模式</RimTouch.EnableTouchMode>
   <RimTouch.EnableTouchModeDesc>启用 RimTouch 直接触控手势与 UI 点按修复。</RimTouch.EnableTouchModeDesc>
   <RimTouch.Input>输入：</RimTouch.Input>
+  <RimTouch.InputDiagnostics>临时记录触控诊断（调试日志）</RimTouch.InputDiagnostics>
+  <RimTouch.InputDiagnosticsDesc>勾选后复现问题，再点“复制精简触控诊断”。也可复制游戏调试日志。无需启动参数或重启，不保存此开关；每轮最多 1024 条，停止后可重新勾选。</RimTouch.InputDiagnosticsDesc>
+  <RimTouch.CopyInputDiagnostics>复制精简触控诊断</RimTouch.CopyInputDiagnostics>
   <RimTouch.EnableGlobeTwist>双指旋转地球</RimTouch.EnableGlobeTwist>
   <RimTouch.EnableGlobeTwistDesc>双指旋转可转动世界视图。一次明确的扭转会解除世界画面的“北向上”锁定，可在世界视图里用“北向上”把它扳正。</RimTouch.EnableGlobeTwistDesc>
   <RimTouch.TwistCommitDegrees>旋转触发角度：</RimTouch.TwistCommitDegrees>

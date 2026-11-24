@@ -15,8 +15,8 @@ namespace RimTouch
         private static bool ApplyWorldTwist(float clockwiseDegrees, Vector2 gui)
         {
             WorldCameraDriver driver = Find.WorldCameraDriver;
-            Quaternion rotation;
-            if (driver == null || !ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out rotation)) return false;
+            if (driver == null) return false;
+            Quaternion rotation = driver.sphereRotation;
             Vector3 anchor;
             bool hasAnchor = TryGetWorldSpherePointAtGui(gui, out anchor);
             // ApplyPositionToGameObject uses inverse(sphereRotation) as the camera
@@ -25,7 +25,7 @@ namespace RimTouch
             Quaternion next = Quaternion.AngleAxis(-clockwiseDegrees, Vector3.forward) * rotation;
             float angle = Quaternion.Angle(Quaternion.identity, next);
             if (float.IsNaN(angle) || float.IsInfinity(angle)) return false;
-            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, next)) return false;
+            driver.sphereRotation = next;
             if (Find.PlaySettings != null) Find.PlaySettings.lockNorthUp = false;
             ReflectionGuard.TrySetField(WorldRotationAnimationLerpField, driver, 1f);
             SuppressWorldCameraEdgeScrollState(driver);
@@ -74,99 +74,16 @@ namespace RimTouch
 
         private static bool IsWorldMapActive()
         {
-            if (Find.WorldCameraDriver == null)
-            {
-                return false;
-            }
-
             try
             {
-                if (Find.WorldSelector == null)
-                {
-                    return false;
-                }
+                return Find.WorldCameraDriver != null
+                    && Find.WorldSelector != null
+                    && WorldRendererUtility.WorldRendered;
             }
             catch
             {
                 return false;
             }
-
-            bool renderedNow;
-            if (TryGetWorldRenderedNow(out renderedNow))
-            {
-                return renderedNow;
-            }
-
-            if (Find.World != null && Find.World.renderer != null)
-            {
-                object renderer = Find.World.renderer;
-                object wantedMode = GetMemberValue(renderer, "wantedMode");
-                if (wantedMode != null && wantedMode.ToString() != "None")
-                {
-                    return true;
-                }
-            }
-
-            return Find.CurrentMap == null;
-        }
-
-        private static bool TryGetWorldRenderedNow(out bool renderedNow)
-        {
-            renderedNow = false;
-
-            try
-            {
-                if (WorldRenderedNowProperty != null)
-                {
-                    return ReflectionGuard.TryGetProperty(WorldRenderedNowProperty, null, out renderedNow);
-                }
-
-                if (WorldRenderedNowGetter != null)
-                {
-                    object value;
-                    if (ReflectionGuard.TryInvoke(WorldRenderedNowGetter, null, null, out value) && value is bool)
-                    {
-                        renderedNow = (bool)value;
-                        return true;
-                    }
-                }
-
-                if (WorldRenderedNowField != null)
-                {
-                    return ReflectionGuard.TryGetField(WorldRenderedNowField, null, out renderedNow);
-                }
-            }
-            catch
-            {
-                renderedNow = false;
-            }
-
-            return false;
-        }
-
-        private static object GetMemberValue(object instance, string memberName)
-        {
-            if (instance == null)
-            {
-                return null;
-            }
-
-            Type type = instance.GetType();
-            FieldInfo field = ReflectionGuard.Field(type, memberName, false);
-            if (field != null)
-            {
-                object value;
-                return ReflectionGuard.TryGetField(field, instance, out value) ? value : null;
-            }
-
-            PropertyInfo property = ReflectionGuard.Property(type, memberName, false);
-            if (property != null)
-            {
-                object value;
-                return ReflectionGuard.TryGetProperty(property, instance, out value) ? value : null;
-            }
-
-            return null;
         }
 
         private static Vector2 PanWorldByGuiDelta(Vector2 previousGui, Vector2 currentGui, Vector2 dragStartGui)
@@ -187,11 +104,11 @@ namespace RimTouch
                     // turntable axes, so the grabbed point tracks the finger (grab
                     // error 8-10px instead of 163-217px) without rolling. Falls back
                     // to the fixed-k turntable when the anchor or raycast is missing.
-                    // Chase a target mirrored through the drag start for cumulative
-                    // opposite motion in a stable converging feedback loop. When
-                    // the finger stops, the target is fixed and the anchor settles.
-                    Vector2 projectedTargetGui = RimTouchMod.Settings != null && RimTouchMod.Settings.invertTurntableAxis
-                        ? 2f * dragStartGui - currentGui : currentGui;
+                    // Scale displacement from the start; a stationary finger leaves
+                    // a fixed target for the feedback loop to converge on.
+                    float sensitivity = RimTouchMod.Settings != null ? RimTouchMod.Settings.turntableDragSensitivity : 1f;
+                    float signedScale = RimTouchMod.Settings != null && RimTouchMod.Settings.invertTurntableAxis ? -sensitivity : sensitivity;
+                    Vector2 projectedTargetGui = dragStartGui + (currentGui - dragStartGui) * signedScale;
                     ok = ApplyProjectedTurntableDrag(driver, projectedTargetGui)
                         || ApplyTurntableDrag(driver, guiDelta);
                 }
@@ -231,7 +148,7 @@ namespace RimTouch
         private static bool TryComputeWorldAnchorDelta(WorldCameraDriver driver, Vector3 anchorPoint, Vector2 gui, out Quaternion deltaRotation)
         {
             deltaRotation = Quaternion.identity;
-            if (driver == null || WorldCameraSphereRotationField == null)
+            if (driver == null)
             {
                 return false;
             }
@@ -288,7 +205,7 @@ namespace RimTouch
 
         private static bool KeepWorldPointUnderGui(WorldCameraDriver driver, Vector3 anchorPoint, Vector2 gui)
         {
-            if (driver == null || WorldCameraSphereRotationField == null)
+            if (driver == null)
             {
                 return false;
             }
@@ -299,11 +216,7 @@ namespace RimTouch
                 return false;
             }
 
-            Quaternion sphereRotation;
-            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
-            {
-                return false;
-            }
+            Quaternion sphereRotation = driver.sphereRotation;
 
             // The anchor delta is a world-space rotation (it maps the anchor's
             // world direction onto the finger's), so it is pre-multiplied - the
@@ -311,10 +224,7 @@ namespace RimTouch
             // Post-multiplication applied the delta in the sphere's local frame,
             // which let the grabbed point drift once the globe was already rotated.
             Quaternion newRotation = deltaRotation * sphereRotation;
-            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
-            {
-                return false;
-            }
+            driver.sphereRotation = newRotation;
             SuppressWorldCameraEdgeScrollState(driver);
             if (WorldCameraApplyPositionMethod != null)
             {
@@ -358,7 +268,7 @@ namespace RimTouch
                 return;
             }
             WorldCameraDriver driver = Find.WorldCameraDriver;
-            if (driver == null || WorldCameraSphereRotationField == null || Find.PlaySettings == null)
+            if (driver == null || Find.PlaySettings == null)
             {
                 return;
             }
@@ -366,11 +276,7 @@ namespace RimTouch
             {
                 return;
             }
-            Quaternion sphereRotation;
-            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
-            {
-                return;
-            }
+            Quaternion sphereRotation = driver.sphereRotation;
             if (Quaternion.Angle(sphereRotation, ComputeNorthUpRotation(sphereRotation)) <= NorthReturnFinishDegrees)
             {
                 Find.PlaySettings.lockNorthUp = true;
@@ -393,7 +299,7 @@ namespace RimTouch
                 return;
             }
             WorldCameraDriver driver = Find.WorldCameraDriver;
-            if (driver == null || WorldCameraSphereRotationField == null || Find.PlaySettings == null)
+            if (driver == null || Find.PlaySettings == null)
             {
                 northReturnActive = false;
                 return;
@@ -403,12 +309,7 @@ namespace RimTouch
                 northReturnActive = false;
                 return;
             }
-            Quaternion sphereRotation;
-            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
-            {
-                northReturnActive = false;
-                return;
-            }
+            Quaternion sphereRotation = driver.sphereRotation;
             Quaternion target = ComputeNorthUpRotation(sphereRotation);
             if (Quaternion.Angle(sphereRotation, target) <= NorthReturnFinishDegrees)
             {
@@ -426,11 +327,7 @@ namespace RimTouch
             float dt = Mathf.Max(Time.unscaledDeltaTime, 0f);
             float t = 1f - Mathf.Exp(-dt / tau);
             Quaternion next = Quaternion.Slerp(sphereRotation, target, t);
-            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, next))
-            {
-                northReturnActive = false;
-                return;
-            }
+            driver.sphereRotation = next;
             SuppressWorldCameraEdgeScrollState(driver);
             if (WorldCameraApplyPositionMethod != null)
             {
@@ -465,17 +362,12 @@ namespace RimTouch
         private static void UpdateWorldPanAnchorLocal()
         {
             WorldCameraDriver driver = Find.WorldCameraDriver;
-            if (driver == null || WorldCameraSphereRotationField == null)
+            if (driver == null)
             {
                 worldPanAnchorLocal = Vector3.zero;
                 return;
             }
-            Quaternion sphereRotation;
-            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
-            {
-                worldPanAnchorLocal = Vector3.zero;
-                return;
-            }
+            Quaternion sphereRotation = driver.sphereRotation;
             Vector3 center = GetWorldSphereCenter(driver);
             Vector3 anchorDir = worldPanAnchorPoint - center;
             if (anchorDir.sqrMagnitude <= 0.0001f)
@@ -500,7 +392,7 @@ namespace RimTouch
         // caller can fall back to the fixed-k turntable for that frame.
         private static bool ApplyProjectedTurntableDrag(WorldCameraDriver driver, Vector2 targetGui)
         {
-            if (driver == null || WorldCameraSphereRotationField == null)
+            if (driver == null)
             {
                 return false;
             }
@@ -513,11 +405,7 @@ namespace RimTouch
             {
                 return false;
             }
-            Quaternion sphereRotation;
-            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
-            {
-                return false;
-            }
+            Quaternion sphereRotation = driver.sphereRotation;
             Vector3 north = sphereRotation * Vector3.up;
             Vector3 pitchAxis = Vector3.Cross(north, camera.transform.forward);
             if (pitchAxis.sqrMagnitude <= 0.0001f)
@@ -553,26 +441,15 @@ namespace RimTouch
             }
             Vector3 omega = axis.normalized * (angleDeg * Mathf.Deg2Rad);
             Vector3 omegaTurn = north * Vector3.Dot(omega, north) + pitchAxis * Vector3.Dot(omega, pitchAxis);
-            // The projected turntable is a feedback loop: omegaTurn is the
-            // EXACT rotation that puts the grabbed point under the finger.
-            // Scaling it by a sensitivity above 1 overshoots the finger
-            // every frame and the loop oscillates (jitter). Clamp the gain
-            // to 1 so the loop can never overshoot; below 1 it just tracks
-            // more lazily, which stays stable. (The fixed-k fallback is
-            // open-loop, so it keeps the full sensitivity range.)
-            float sensitivity = RimTouchMod.Settings != null ? RimTouchMod.Settings.turntableDragSensitivity : 1f;
-            float turnAngleDeg = omegaTurn.magnitude * Mathf.Rad2Deg * Mathf.Min(sensitivity, 1f);
+            // Sensitivity changes the target displacement, not the feedback gain.
+            float turnAngleDeg = Mathf.Min(omegaTurn.magnitude * Mathf.Rad2Deg, 45f);
             if (turnAngleDeg <= 0.001f)
             {
                 return true;
             }
-            turnAngleDeg = Mathf.Min(turnAngleDeg, 45f);
             Quaternion dR = Quaternion.AngleAxis(turnAngleDeg, omegaTurn.normalized);
             Quaternion newRotation = dR * sphereRotation;
-            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
-            {
-                return false;
-            }
+            driver.sphereRotation = newRotation;
             SuppressWorldCameraEdgeScrollState(driver);
             if (WorldCameraApplyPositionMethod != null)
             {
@@ -583,7 +460,7 @@ namespace RimTouch
 
         private static bool ApplyTurntableDrag(WorldCameraDriver driver, Vector2 guiDelta)
         {
-            if (driver == null || WorldCameraSphereRotationField == null)
+            if (driver == null)
             {
                 return false;
             }
@@ -592,11 +469,7 @@ namespace RimTouch
             {
                 return false;
             }
-            Quaternion sphereRotation;
-            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
-            {
-                return false;
-            }
+            Quaternion sphereRotation = driver.sphereRotation;
             Vector3 north = sphereRotation * Vector3.up;
             // Pitch axis: the screen-horizontal axis PERPENDICULAR to north.
             // camera.transform.right is only perpendicular to north while north is up;
@@ -638,10 +511,7 @@ namespace RimTouch
             {
                 newRotation = Quaternion.Inverse(pitch) * Quaternion.Inverse(yaw) * sphereRotation;
             }
-            if (!ReflectionGuard.TrySetField(WorldCameraSphereRotationField, driver, newRotation))
-            {
-                return false;
-            }
+            driver.sphereRotation = newRotation;
             SuppressWorldCameraEdgeScrollState(driver);
             if (WorldCameraApplyPositionMethod != null)
             {
@@ -716,16 +586,12 @@ namespace RimTouch
 
         private static float GetWorldPoleFactor(WorldCameraDriver driver)
         {
-            if (driver == null || WorldCameraSphereRotationField == null)
+            if (driver == null)
             {
                 return 0f;
             }
 
-            Quaternion sphereRotation;
-            if (!ReflectionGuard.TryGetField(WorldCameraSphereRotationField, driver, out sphereRotation))
-            {
-                return 0f;
-            }
+            Quaternion sphereRotation = driver.sphereRotation;
 
             Vector3 lookPoint = -(Quaternion.Inverse(sphereRotation) * Vector3.forward);
             if (!IsFinite(lookPoint) || lookPoint.sqrMagnitude <= 0.0001f)
@@ -756,20 +622,20 @@ namespace RimTouch
 
         private static bool TryGetWorldAltitude(WorldCameraDriver driver, out float altitude)
         {
-            altitude = 0f;
-            return driver != null && ReflectionGuard.TryGetField(WorldCameraAltitudeField, driver, out altitude);
+            altitude = driver != null ? driver.altitude : 0f;
+            return driver != null;
         }
 
         private static bool TrySetWorldAltitude(WorldCameraDriver driver, float altitude)
         {
-            if (driver == null || WorldCameraAltitudeField == null || WorldCameraDesiredAltitudeField == null)
+            if (driver == null || WorldCameraDesiredAltitudeField == null)
             {
                 return false;
             }
 
-            bool altitudeSet = ReflectionGuard.TrySetField(WorldCameraAltitudeField, driver, altitude);
+            driver.altitude = altitude;
             bool desiredAltitudeSet = ReflectionGuard.TrySetField(WorldCameraDesiredAltitudeField, driver, altitude);
-            return altitudeSet && desiredAltitudeSet;
+            return desiredAltitudeSet;
         }
 
         private static float GetWorldMaxAltitude(WorldCameraDriver driver)

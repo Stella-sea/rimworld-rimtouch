@@ -17,10 +17,43 @@ namespace RimTouch
         static RimTouchBootstrap()
         {
             Harmony harmony = new Harmony("tatsuki.rimtouch");
-            harmony.PatchAll();
+            System.Type[] types;
+            try
+            {
+                types = typeof(RimTouchBootstrap).Assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                types = ex.Types;
+            }
+
+            int failedPatches = 0;
+            if (types != null)
+            {
+                for (int i = 0; i < types.Length; i++)
+                {
+                    System.Type type = types[i];
+                    if (type == null || !type.IsDefined(typeof(HarmonyPatch), false))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        harmony.CreateClassProcessor(type).Patch();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        failedPatches++;
+                        Log.Warning("[RimTouch] Failed to apply Harmony patch " + type.Name + ": " + ex.Message);
+                    }
+                }
+            }
+
             int targets = 0;
             foreach (MethodBase target in harmony.GetPatchedMethods()) targets++;
-            Log.Message("[RimTouch] Loaded touch input support; " + targets + " native hook targets; extra UI-scale hook ready=" + UiScaleHookReady + ".");
+            string failureSummary = failedPatches > 0 ? ("; failed patches=" + failedPatches) : string.Empty;
+            Log.Message("[RimTouch] Loaded touch input support; " + targets + " native hook targets" + failureSummary + "; extra UI-scale hook ready=" + UiScaleHookReady + ".");
         }
 
         public static float[] GetUiScales(float[] nativeChoices)
@@ -96,22 +129,12 @@ namespace RimTouch
         }
     }
 
-    [HarmonyPatch(typeof(Root_Play), "Update")]
-    public static class RootPlayUpdatePatch
+    [HarmonyPatch(typeof(Root), "Update")]
+    public static class RootUpdatePatch
     {
-        public static void Prefix()
+        public static void Prefix(Root __instance)
         {
-            RimTouch.TouchPlatform.TouchInputProof.MarkUpdate(true);
-            TouchInputDriver.Update();
-        }
-    }
-
-    [HarmonyPatch(typeof(Root_Entry), "Update")]
-    public static class RootEntryUpdatePatch
-    {
-        public static void Postfix()
-        {
-            RimTouch.TouchPlatform.TouchInputProof.MarkUpdate(false);
+            RimTouch.TouchPlatform.TouchInputProof.MarkUpdate(__instance is Root_Play);
             TouchInputDriver.Update();
         }
     }
@@ -225,6 +248,62 @@ namespace RimTouch
             if (!RimTouchMod.ExtraUiScalesEnabled) return true;
             __result = true;
             return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(GUI), "DragWindow", new[] { typeof(Rect) })]
+    public static class GuiDragWindowTouchPatch
+    {
+        public static bool Prepare()
+        {
+            // Unity's native/internal-call implementation cannot be prefixed by
+            // every Harmony runtime. Waylith exposes the managed method checked here.
+            MethodInfo target = AccessTools.Method(typeof(GUI), "DragWindow", new[] { typeof(Rect) });
+            return target != null && target.GetMethodBody() != null;
+        }
+
+        public static bool Prefix()
+        {
+            return TouchInputDriver.ShouldAllowWindowDrag();
+        }
+    }
+
+    [HarmonyPatch(typeof(Widgets), "ButtonInvisibleDraggable", new[] { typeof(Rect), typeof(bool) })]
+    public static class WidgetsButtonInvisibleDraggableTouchPatch
+    {
+        public static bool Prefix(Rect butRect, ref Widgets.DraggableResult __result)
+        {
+            if (!GUI.enabled) return true;
+            if (TouchInputDriver.ShouldSuppressUiClickInRect(butRect))
+            {
+                __result = Widgets.DraggableResult.Idle;
+                Event current = Event.current;
+                if (current != null && current.isMouse) current.Use();
+                return false;
+            }
+            if (TouchTapRepair.ShouldSuppressDuplicateDraggableInFrame(butRect))
+            {
+                __result = Widgets.DraggableResult.Idle;
+                return false;
+            }
+            return true;
+        }
+
+        public static void Postfix(Rect butRect, Widgets.DraggableResult __result)
+        {
+            if (__result != Widgets.DraggableResult.Idle)
+            {
+                TouchTapRepair.NotifyDraggableTriggered(butRect);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Widgets), "HorizontalSlider", new[] { typeof(Rect), typeof(float), typeof(float), typeof(float), typeof(bool), typeof(string), typeof(string), typeof(string), typeof(float) })]
+    public static class WidgetsHorizontalSliderTouchPatch
+    {
+        public static void Prefix()
+        {
+            TouchInputDriver.FilterHorizontalSliderDrag();
         }
     }
 
