@@ -14,7 +14,6 @@ namespace RimTouch
     {
         private const float DragSlopPixels = 18f;
         private const float MovementDetectionSlopPixels = 6f;
-        private const int TouchDropoutGraceFrames = 2;
         private const float SelectHoldSeconds = 0.32f;
         private const float RightClickHoldSeconds = 0.50f;
         private const float RightClickHoldSlopPixels = 22f;
@@ -26,15 +25,11 @@ namespace RimTouch
         private const float MinPanInertiaStartSpeed = 0.12f;
         private const float MinPanInertiaSpeed = 0.035f;
         private const float MaxPanInertiaSpeed = 120f;
-        private const float PanVelocityHistorySeconds = 0.14f;
-        private const int PanVelocitySampleCapacity = 6;
         private const float WorldPanPixelsToRotation = 0.12f;
         private const float WorldPanInertiaStrengthScale = 0.56f;
         private const float MinWorldPanInertiaStartSpeed = 80f;
         private const float MinWorldPanInertiaSpeed = 8f;
         private const float MaxWorldPanInertiaSpeed = 3500f;
-        private const float WorldPanVelocityHistorySeconds = 0.14f;
-        private const int WorldPanVelocitySampleCapacity = 6;
         private const float WorldAnchorPoleDampingStart = 0.74f;
         private const float WorldAnchorPoleMinimumScale = 0.18f;
         private const float MaxWorldAnchorRotationDegrees = 6f;
@@ -51,44 +46,26 @@ namespace RimTouch
         private const float MinZoomInertiaStartSpeed = 0.25f;
         private const float MinZoomInertiaSpeed = 0.06f;
         private const float MaxZoomInertiaSpeed = 8f;
-        private const int ZoomVelocitySampleCapacity = 6;
-        private const float ZoomVelocityHistorySeconds = 0.14f;
         private const float MinUiScrollInertiaStartSpeed = 120f;
         private const float MinUiScrollInertiaSpeed = 8f;
         private const float MaxUiScrollInertiaSpeed = 5000f;
-        private const int UiScrollVelocitySampleCapacity = 5;
-        private const float UiScrollVelocityHistorySeconds = 0.12f;
 
         private static readonly FieldInfo CameraRootPosField = ReflectionGuard.Field(typeof(CameraDriver), "rootPos");
-        private static readonly FieldInfo CameraRootSizeField = ReflectionGuard.Field(typeof(CameraDriver), "rootSize");
         private static readonly FieldInfo CameraVelocityField = ReflectionGuard.Field(typeof(CameraDriver), "velocity");
         private static readonly FieldInfo CameraDesiredDollyField = ReflectionGuard.Field(typeof(CameraDriver), "desiredDolly");
         private static readonly FieldInfo CameraDesiredDollyRawField = ReflectionGuard.Field(typeof(CameraDriver), "desiredDollyRaw");
         private static readonly FieldInfo CameraMouseBottomEdgeStartField = ReflectionGuard.Field(typeof(CameraDriver), "mouseTouchingScreenBottomEdgeStartTime");
-        private static readonly FieldInfo SelectorDragBoxField = ReflectionGuard.Field(typeof(Selector), "dragBox");
-        private static readonly FieldInfo DragBoxActiveField = ReflectionGuard.Field(typeof(DragBox), "active");
-        private static readonly FieldInfo DragBoxStartField = ReflectionGuard.Field(typeof(DragBox), "start");
-        private static readonly FieldInfo FloatMenuOptionActionField = ReflectionGuard.Field(typeof(FloatMenuOption), "action");
         private static readonly MethodInfo SelectorSelectInsideDragBoxMethod = ReflectionGuard.Method(typeof(Selector), "SelectInsideDragBox");
-        private static readonly MethodInfo FloatMenuMakerMapGetAutoTakeOptionMethod = ReflectionGuard.Method(typeof(FloatMenuMakerMap), "GetAutoTakeOption");
         private static readonly FieldInfo WorldCameraRotationVelocityField = ReflectionGuard.Field(typeof(WorldCameraDriver), "rotationVelocity");
         private static readonly FieldInfo WorldCameraMouseBottomEdgeStartField = ReflectionGuard.Field(typeof(WorldCameraDriver), "mouseTouchingScreenBottomEdgeStartTime");
-        private static readonly FieldInfo WorldCameraAltitudeField = ReflectionGuard.Field(typeof(WorldCameraDriver), "altitude");
         private static readonly FieldInfo WorldCameraDesiredAltitudeField = ReflectionGuard.Field(typeof(WorldCameraDriver), "desiredAltitude");
         private static readonly FieldInfo WorldCameraMaxAltitudeField = ReflectionGuard.Field(typeof(WorldCameraDriver), "MaxAltitude", false);
-        private static readonly FieldInfo WorldCameraSphereRotationField = ReflectionGuard.Field(typeof(WorldCameraDriver), "sphereRotation");
         private static readonly FieldInfo WorldRotationAnimationLerpField = ReflectionGuard.Field(typeof(WorldCameraDriver), "rotationAnimation_lerpFactor", false);
         private static readonly FieldInfo WorldCameraSphereRadiusField = ReflectionGuard.Field(typeof(WorldCameraDriver), "SphereRadius", false);
         private static readonly FieldInfo WorldCameraLayerOriginOffsetField = ReflectionGuard.Field(typeof(WorldCameraDriver), "layerOriginOffset", false);
         private static readonly FieldInfo WorldCameraCachedCameraField = ReflectionGuard.Field(typeof(WorldCameraDriver), "cachedCamera");
         private static readonly MethodInfo WorldCameraApplyPositionMethod = ReflectionGuard.Method(typeof(WorldCameraDriver), "ApplyPositionToGameObject");
-        private static readonly FieldInfo WorldSelectorDragBoxField = ReflectionGuard.Field(typeof(WorldSelector), "dragBox");
-        private static readonly FieldInfo WorldDragBoxActiveField = ReflectionGuard.Field(typeof(WorldDragBox), "active");
-        private static readonly FieldInfo WorldDragBoxStartField = ReflectionGuard.Field(typeof(WorldDragBox), "start");
         private static readonly MethodInfo WorldSelectorSelectInsideDragBoxMethod = ReflectionGuard.Method(typeof(WorldSelector), "SelectInsideDragBox");
-        private static readonly PropertyInfo WorldRenderedNowProperty = ReflectionGuard.Property(typeof(WorldRendererUtility), "WorldRenderedNow", false);
-        private static readonly MethodInfo WorldRenderedNowGetter = ReflectionGuard.Method(typeof(WorldRendererUtility), "get_WorldRenderedNow", false);
-        private static readonly FieldInfo WorldRenderedNowField = ReflectionGuard.Field(typeof(WorldRendererUtility), "WorldRenderedNow", false);
 
         private static TouchMode mode = TouchMode.None;
         private static long primaryFingerId = -1;
@@ -138,7 +115,6 @@ namespace RimTouch
         private static bool hadTouchLastFrame;
         private static bool touchFailureLogged;
         private static string lastBackendStatus;
-        private static int touchDropoutFrames;
         private static bool suppressEdgeScrollUntilMouseMoves;
         private static bool suppressVanillaMapUntilMouseMoves;
         private static bool uiScrollGestureActive;
@@ -166,22 +142,7 @@ namespace RimTouch
         private static float panGestureDistance;
         private static float lastSignificantMovementElapsed;
         private static bool selectPrimed;
-        private static readonly Vector3[] PanVelocitySamples = new Vector3[PanVelocitySampleCapacity];
-        private static readonly float[] PanVelocitySampleTimes = new float[PanVelocitySampleCapacity];
-        private static int panVelocitySampleIndex;
-        private static int panVelocitySampleCount;
-        private static readonly float[] ZoomVelocitySamples = new float[ZoomVelocitySampleCapacity];
-        private static readonly float[] ZoomVelocitySampleTimes = new float[ZoomVelocitySampleCapacity];
-        private static int zoomVelocitySampleIndex;
-        private static int zoomVelocitySampleCount;
-        private static readonly Vector2[] WorldPanVelocitySamples = new Vector2[WorldPanVelocitySampleCapacity];
-        private static readonly float[] WorldPanVelocitySampleTimes = new float[WorldPanVelocitySampleCapacity];
-        private static int worldPanVelocitySampleIndex;
-        private static int worldPanVelocitySampleCount;
-        private static readonly Vector2[] UiScrollVelocitySamples = new Vector2[UiScrollVelocitySampleCapacity];
-        private static readonly float[] UiScrollVelocitySampleTimes = new float[UiScrollVelocitySampleCapacity];
-        private static int uiScrollVelocitySampleIndex;
-        private static int uiScrollVelocitySampleCount;
+        private static readonly Vector2[] MarchingAntsCorners = new Vector2[5];
         private static readonly Vector2[] MapTargetSearchOffsets = new Vector2[]
         {
             Vector2.zero,
@@ -195,7 +156,7 @@ namespace RimTouch
             new Vector2(-TouchMapTargetRadiusPixels, -TouchMapTargetRadiusPixels)
         };
 
-        private static bool TouchModeEnabled
+        internal static bool TouchModeEnabled
         {
             get
             {
@@ -264,7 +225,7 @@ namespace RimTouch
                 for (int i = 0; i < count; i++)
                 {
                     Vector2 gui = TouchToGui(TouchSource.GetTouch(i).position);
-                    if (rect.Contains(GuiToLocalGuiPoint(gui)) || rect.Contains(gui))
+                    if (rect.Contains(GuiToLocalGuiPoint(gui)))
                     {
                         return true;
                     }
@@ -471,27 +432,6 @@ namespace RimTouch
                 {
                     if (hadTouchLastFrame)
                     {
-                        touchDropoutFrames++;
-                        if (touchDropoutFrames <= TouchDropoutGraceFrames)
-                        {
-                            // A single (or occasionally two) consecutive frame(s) reporting zero
-                            // touches even though the finger never actually left the screen is a
-                            // known quirk of Windows/Unity legacy touch reporting, especially under
-                            // frame-rate dips. Treating that as a real lift used to tear down and
-                            // silently restart the whole gesture mid-drag at a random point - which
-                            // re-triggered the Pan/SelectionHold classification from scratch and
-                            // could misfire into a selection box for no visible reason. Ride out the
-                            // gap instead and keep the existing gesture state intact.
-                            UpdateInertia();
-                            return;
-                        }
-                    }
-
-                    bool finalizedTouch = false;
-                    if (hadTouchLastFrame)
-                    {
-                        FinalizeTouchDisappearance();
-                        finalizedTouch = true;
                         suppressEdgeScrollUntilMouseMoves = true;
                         if (!startedOverUi && mode != TouchMode.VanillaMapTool)
                         {
@@ -499,18 +439,14 @@ namespace RimTouch
                         }
                         mousePositionWhenTouchEnded = Input.mousePosition;
                     }
+                    if (mode != TouchMode.None || uiScrollGestureActive)
+                    {
+                        RecordTouchLifecycle("disappeared");
+                        CompleteActiveGesture(lastGui);
+                    }
                     hadTouchLastFrame = false;
-                    touchDropoutFrames = 0;
                     UpdateEdgeScrollSuppression();
                     ignoreTouchesUntilAllReleased = false;
-                    if (mode != TouchMode.None)
-                    {
-                        if (!finalizedTouch)
-                        {
-                            FinalizeInertiaFromGesture();
-                        }
-                        ResetState();
-                    }
                     if (ShouldSuppressVanillaMapInput)
                     {
                         CancelRimWorldDragBox();
@@ -523,9 +459,7 @@ namespace RimTouch
                     return;
                 }
 
-                touchDropoutFrames = 0;
-
-                if (!hadTouchLastFrame)
+                if (!hadTouchLastFrame && !ignoreTouchesUntilAllReleased)
                 {
                     StopInertia();
                     StopUiScrollInertia();
@@ -538,7 +472,38 @@ namespace RimTouch
                 lastTouchFrame = Time.frameCount;
                 lastUpdateTime = Time.realtimeSinceStartup;
 
-                if (ignoreTouchesUntilAllReleased && mode == TouchMode.None) return;
+                if (ignoreTouchesUntilAllReleased)
+                {
+                    bool allEnded = true;
+                    for (int i = 0; i < touchCount; i++)
+                    {
+                        if (!IsEnded(TouchSource.GetTouch(i)))
+                        {
+                            allEnded = false;
+                            break;
+                        }
+                    }
+                    if (allEnded)
+                    {
+                        if (mode != TouchMode.None || uiScrollGestureActive)
+                        {
+                            if (touchCount >= 2 && mode == TouchMode.TwoFinger)
+                            {
+                                UpdateTwoFinger(TouchSource.GetTouch(0), TouchSource.GetTouch(1));
+                            }
+                            else
+                            {
+                                CompleteActiveGesture(lastGui);
+                            }
+                        }
+                        hadTouchLastFrame = false;
+                        return;
+                    }
+                    if (mode == TouchMode.None)
+                    {
+                        return;
+                    }
+                }
 
                 if (touchCount >= 2)
                 {
@@ -570,6 +535,7 @@ namespace RimTouch
 
         private static void AbortTouchInput()
         {
+            RecordTouchLifecycle("abort");
             // Cancellation must not flow through FinishTouch or disappearance
             // finalization: those can select, order, or queue a UI tap.
             StopInertia();
@@ -580,7 +546,8 @@ namespace RimTouch
             TouchTapRepair.Clear();
             hadTouchLastFrame = false;
             ignoreTouchesUntilAllReleased = false;
-            touchDropoutFrames = 0;
+            lastWorldTapTime = -100f;
+            lastWorldTapGui = Vector2.zero;
             lastTouchFrame = lastMultiTouchFrame = -1000;
             suppressUiClickUntilFrame = suppressWindowCloseUntilFrame = -1000;
             suppressVanillaMapInputUntilFrame = -1000;
@@ -616,6 +583,11 @@ namespace RimTouch
                 startTime = Time.realtimeSinceStartup;
                 lastWorldPanSampleTime = startTime;
                 startedOverUi = IsLikelyUiPosition(gui);
+                uiTouchStartWindow = Find.WindowStack == null ? null : Find.WindowStack.GetWindowAt(gui);
+                uiTouchStartWindowPosition = uiTouchStartWindow == null ? Vector2.zero
+                    : new Vector2(uiTouchStartWindow.windowRect.x, uiTouchStartWindow.windowRect.y);
+                uiScrollCandidateWindow = null;
+                RecordTouchLifecycle("begin");
                 rightClickDone = false;
                 suppressReleaseTap = false;
                 panGestureDistance = 0f;
@@ -661,22 +633,17 @@ namespace RimTouch
                 lastGui = gui;
                 if (IsEnded(touch))
                 {
-                    FinishTouch();
+                    CompleteActiveGesture(gui);
                 }
                 return;
             }
 
             if (startedOverUi)
             {
-                if (IsEnded(touch) && moveDistance <= DragSlopPixels && !suppressReleaseTap)
-                {
-                    QueueUiTap(gui);
-                }
                 lastGui = gui;
                 if (IsEnded(touch))
                 {
-                    FinalizeUiScrollInertia();
-                    FinishTouch();
+                    CompleteActiveGesture(gui);
                 }
                 return;
             }
@@ -752,19 +719,7 @@ namespace RimTouch
 
             if (IsEnded(touch))
             {
-                if (mode == TouchMode.OneFinger && moveDistance <= DragSlopPixels && !rightClickDone)
-                {
-                    if (!TryDoDraftedPawnTapCommand(gui))
-                    {
-                        DoMapLeftClick(gui);
-                    }
-                }
-                else if (mode == TouchMode.SelectionHold)
-                {
-                    FinishRimWorldDragBox();
-                }
-                FinalizeInertiaFromGesture();
-                FinishTouch();
+                CompleteActiveGesture(gui);
                 return;
             }
 
@@ -859,20 +814,7 @@ namespace RimTouch
 
             if (IsEnded(touch))
             {
-                if (mode == TouchMode.OneFinger && moveDistance <= DragSlopPixels && !rightClickDone)
-                {
-                    // Record the tap so the next touch can be recognised as the
-                    // second tap of a double-tap (point-and-drag arming).
-                    lastWorldTapTime = Time.realtimeSinceStartup;
-                    lastWorldTapGui = gui;
-                    DoWorldLeftClick(gui);
-                }
-                else if (mode == TouchMode.WorldDragBox)
-                {
-                    FinishWorldDragBox();
-                }
-                FinalizeInertiaFromGesture();
-                FinishTouch();
+                CompleteActiveGesture(gui);
                 return;
             }
 
@@ -890,7 +832,7 @@ namespace RimTouch
             {
                 gestureIsWorld = IsWorldMapActive();
                 gestureMap = Find.CurrentMap;
-                if (IsLikelyUiPosition(guiA) || IsLikelyUiPosition(guiB))
+                if (IsBlockingWindowAt(guiA) || IsBlockingWindowAt(guiB))
                 {
                     // Two fingers starting on a control window should not move
                     // the map or globe behind that window.
@@ -908,6 +850,10 @@ namespace RimTouch
                 // pinch); stop any smooth north return so it cannot fight
                 // the gesture.
                 CancelNorthReturn();
+                if (IsWorldMapActive() && LockNorthUpOnDragEnabled() && Find.PlaySettings != null)
+                {
+                    Find.PlaySettings.lockNorthUp = false;
+                }
                 GlobeTwist.Reset();
                 GlobeTwist.CommitDegrees = RimTouchMod.Settings != null ? RimTouchMod.Settings.twistCommitDegrees : 10f;
                 GlobeTwist.Update(guiA.x, guiA.y, guiB.x, guiB.y);
@@ -942,8 +888,16 @@ namespace RimTouch
             GlobeTwist.CommitDegrees = RimTouchMod.Settings != null ? RimTouchMod.Settings.twistCommitDegrees : 10f;
             float twistDegrees = ended ? 0 : GlobeTwist.Update(guiA.x, guiA.y, guiB.x, guiB.y);
 
-            if (!ended && IsWorldMapActive())
+            if (IsWorldMapActive())
             {
+                if (LockNorthUpOnDragEnabled())
+                {
+                    if (Find.PlaySettings != null)
+                    {
+                        Find.PlaySettings.lockNorthUp = false;
+                    }
+                    CancelNorthReturn();
+                }
                 SuppressUiClickFallout();
                 panGestureDistance += Vector2.Distance(mid, lastTwoFingerMidpoint);
                 Vector2 panSample = PanWorldByGuiDelta(lastTwoFingerMidpoint, mid, twoFingerStartMidpoint);
@@ -966,7 +920,7 @@ namespace RimTouch
                 }
                 CancelWorldDragBox();
             }
-            else if (!ended && Find.CurrentMap != null)
+            else if (Find.CurrentMap != null)
             {
                 SuppressUiClickFallout();
                 Vector3 appliedDelta = KeepMapPointUnderGui(twoFingerPanAnchorMap, mid);
@@ -981,6 +935,58 @@ namespace RimTouch
 
             if (ended)
             {
+                CompleteActiveGesture(mid);
+            }
+        }
+
+        private static void CompleteActiveGesture(Vector2 releaseGui)
+        {
+            lastGui = releaseGui;
+            if (uiScrollGestureActive)
+            {
+                FinalizeUiScrollInertia();
+                FinishTouch();
+                return;
+            }
+
+            if (mode == TouchMode.OneFinger)
+            {
+                if (startedOverUi)
+                {
+                    float moveDistance = Vector2.Distance(releaseGui, startGui);
+                    if (moveDistance <= DragSlopPixels && !suppressReleaseTap)
+                    {
+                        QueueUiTap(releaseGui);
+                    }
+                }
+                else
+                {
+                    float moveDistance = Vector2.Distance(releaseGui, startGui);
+                    if (moveDistance <= DragSlopPixels && !rightClickDone)
+                    {
+                        if (IsWorldMapActive())
+                        {
+                            lastWorldTapTime = Time.realtimeSinceStartup;
+                            lastWorldTapGui = releaseGui;
+                            DoWorldLeftClick(releaseGui);
+                        }
+                        else if (!TryDoDraftedPawnTapCommand(releaseGui))
+                        {
+                            DoMapLeftClick(releaseGui);
+                        }
+                    }
+                }
+            }
+            else if (mode == TouchMode.SelectionHold)
+            {
+                FinishRimWorldDragBox();
+            }
+            else if (mode == TouchMode.WorldDragBox)
+            {
+                FinishWorldDragBox();
+            }
+            else if (mode == TouchMode.TwoFinger)
+            {
                 suppressReleaseTap = true;
                 if (TryCancelVanillaMapToolFromTwoFingerTap() || TrySelectFromTwoFingerDraftedTap())
                 {
@@ -991,59 +997,11 @@ namespace RimTouch
                     FinalizeInertiaFromGesture();
                 }
                 FinishTouch();
-            }
-        }
-
-        private static void FinalizeTouchDisappearance()
-        {
-            if (uiScrollGestureActive)
-            {
-                FinalizeUiScrollInertia();
-                return;
-            }
-
-            if (mode == TouchMode.OneFinger)
-            {
-                if (startedOverUi)
-                {
-                    float moveDistance = Vector2.Distance(lastGui, startGui);
-                    if (moveDistance <= DragSlopPixels && !suppressReleaseTap)
-                    {
-                        QueueUiTap(lastGui);
-                    }
-                }
-                else
-                {
-                    float moveDistance = Vector2.Distance(lastGui, startGui);
-                    if (moveDistance <= DragSlopPixels && !rightClickDone)
-                    {
-                        if (IsWorldMapActive())
-                        {
-                            DoWorldLeftClick(lastGui);
-                        }
-                        else if (!TryDoDraftedPawnTapCommand(lastGui))
-                        {
-                            DoMapLeftClick(lastGui);
-                        }
-                    }
-                }
-            }
-            else if (mode == TouchMode.SelectionHold)
-            {
-                FinishRimWorldDragBox();
-            }
-            else if (mode == TouchMode.TwoFinger && TryCancelVanillaMapToolFromTwoFingerTap())
-            {
-                StopInertia();
-                return;
-            }
-            else if (mode == TouchMode.TwoFinger && TrySelectFromTwoFingerDraftedTap())
-            {
-                StopInertia();
                 return;
             }
 
             FinalizeInertiaFromGesture();
+            FinishTouch();
         }
 
         private static void UpdateEdgeScrollSuppression()
@@ -1159,7 +1117,7 @@ namespace RimTouch
             }
 
             CellRect viewRect = Find.CameraDriver.CurrentViewRect;
-            List<Thing> allThings = map.listerThings != null ? map.listerThings.AllThings : null;
+            List<Thing> allThings = map.listerThings != null && target.def != null ? map.listerThings.ThingsOfDef(target.def) : null;
             if (allThings == null)
             {
                 return false;
@@ -1316,29 +1274,14 @@ namespace RimTouch
                 return false;
             }
 
-            FloatMenuOption autoTake = null;
-            if (FloatMenuMakerMapGetAutoTakeOptionMethod != null)
-            {
-                object autoTakeValue;
-                if (ReflectionGuard.TryInvoke(FloatMenuMakerMapGetAutoTakeOptionMethod, null, new object[] { options }, out autoTakeValue))
-                {
-                    autoTake = autoTakeValue as FloatMenuOption;
-                }
-            }
-
-            if (autoTake == null || autoTake.Disabled || FloatMenuOptionActionField == null)
+            FloatMenuOption autoTake = FloatMenuMakerMap.GetAutoTakeOption(options);
+            if (autoTake == null || autoTake.Disabled)
             {
                 Find.WindowStack.Add(new FloatMenu(options));
                 return true;
             }
 
-            Action action;
-            if (!ReflectionGuard.TryGetField(FloatMenuOptionActionField, autoTake, out action))
-            {
-                Find.WindowStack.Add(new FloatMenu(options));
-                return true;
-            }
-
+            Action action = autoTake.action;
             if (action == null)
             {
                 Find.WindowStack.Add(new FloatMenu(options));
@@ -1418,11 +1361,8 @@ namespace RimTouch
                 return;
             }
 
-            if (!ReflectionGuard.TrySetField(DragBoxStartField, dragBox, startMap))
-            {
-                return;
-            }
-            ReflectionGuard.TrySetField(DragBoxActiveField, dragBox, true);
+            dragBox.start = startMap;
+            dragBox.active = true;
         }
 
         private static void EnsureRimWorldDragBoxState()
@@ -1435,7 +1375,7 @@ namespace RimTouch
             DragBox dragBox = GetDragBox();
             if (dragBox != null)
             {
-                ReflectionGuard.TrySetField(DragBoxActiveField, dragBox, true);
+                dragBox.active = true;
             }
         }
 
@@ -1454,7 +1394,7 @@ namespace RimTouch
             }
             finally
             {
-                ReflectionGuard.TrySetField(DragBoxActiveField, dragBox, false);
+                dragBox.active = false;
             }
         }
 
@@ -1463,17 +1403,12 @@ namespace RimTouch
             DragBox dragBox = GetDragBox();
             if (dragBox != null)
             {
-                ReflectionGuard.TrySetField(DragBoxActiveField, dragBox, false);
+                dragBox.active = false;
             }
         }
 
         private static void CancelWorldDragBox()
         {
-            if (WorldSelectorDragBoxField == null || WorldDragBoxActiveField == null)
-            {
-                return;
-            }
-
             WorldSelector selector;
             try
             {
@@ -1489,14 +1424,10 @@ namespace RimTouch
                 return;
             }
 
-            WorldDragBox dragBox;
-            if (!ReflectionGuard.TryGetField(WorldSelectorDragBoxField, selector, out dragBox))
-            {
-                return;
-            }
+            WorldDragBox dragBox = selector.dragBox;
             if (dragBox != null)
             {
-                ReflectionGuard.TrySetField(WorldDragBoxActiveField, dragBox, false);
+                dragBox.active = false;
             }
         }
 
@@ -1507,11 +1438,6 @@ namespace RimTouch
 
         private static WorldDragBox GetWorldDragBox()
         {
-            if (WorldSelectorDragBoxField == null)
-            {
-                return null;
-            }
-
             WorldSelector selector;
             try
             {
@@ -1527,8 +1453,7 @@ namespace RimTouch
                 return null;
             }
 
-            WorldDragBox dragBox;
-            return ReflectionGuard.TryGetField(WorldSelectorDragBoxField, selector, out dragBox) ? dragBox : null;
+            return selector.dragBox;
         }
 
         // Deliberate world drag-box (point-and-drag): double-tap, hold, drag on the
@@ -1538,16 +1463,13 @@ namespace RimTouch
         private static void BeginWorldDragBox(Vector2 guiStart)
         {
             WorldDragBox dragBox = GetWorldDragBox();
-            if (dragBox == null || WorldDragBoxStartField == null || WorldDragBoxActiveField == null)
+            if (dragBox == null)
             {
                 return;
             }
 
-            if (!ReflectionGuard.TrySetField(WorldDragBoxStartField, dragBox, guiStart))
-            {
-                return;
-            }
-            ReflectionGuard.TrySetField(WorldDragBoxActiveField, dragBox, true);
+            dragBox.start = guiStart;
+            dragBox.active = true;
             worldDragBoxStartGui = guiStart;
         }
 
@@ -1572,12 +1494,12 @@ namespace RimTouch
                 }
                 finally
                 {
-                    ReflectionGuard.TrySetField(WorldDragBoxActiveField, dragBox, false);
+                    dragBox.active = false;
                 }
             }
             else if (dragBox != null)
             {
-                ReflectionGuard.TrySetField(WorldDragBoxActiveField, dragBox, false);
+                dragBox.active = false;
             }
         }
 
@@ -1601,7 +1523,7 @@ namespace RimTouch
             float phase = (Time.realtimeSinceStartup * speed) % period;
             Color border = new Color(1f, 1f, 1f, 0.95f);
 
-            Vector2[] corners = new Vector2[5];
+            Vector2[] corners = MarchingAntsCorners;
             corners[0] = new Vector2(rect.xMin, rect.yMin);
             corners[1] = new Vector2(rect.xMax, rect.yMin);
             corners[2] = new Vector2(rect.xMax, rect.yMax);
@@ -1644,12 +1566,11 @@ namespace RimTouch
         private static DragBox GetDragBox()
         {
             Selector selector = GetLocalSelector();
-            if (selector == null || SelectorDragBoxField == null)
+            if (selector == null)
             {
                 return null;
             }
-            DragBox dragBox;
-            return ReflectionGuard.TryGetField(SelectorDragBoxField, selector, out dragBox) ? dragBox : null;
+            return selector.dragBox;
         }
 
         private static bool IsEnded(ContactTouch touch)
@@ -1665,6 +1586,10 @@ namespace RimTouch
 
         private static void ResetState()
         {
+            if (mode != TouchMode.None || uiScrollGestureActive)
+            {
+                RecordTouchLifecycle("reset");
+            }
             CancelRimWorldDragBox();
             CancelWorldDragBox();
             mode = TouchMode.None;
@@ -1674,6 +1599,7 @@ namespace RimTouch
             rightClickDone = false;
             suppressReleaseTap = false;
             uiScrollGestureActive = false;
+            uiTouchStartWindow = uiScrollWindow = uiScrollCandidateWindow = null;
             uiScrollActiveRect = default(Rect);
             uiScrollLastGui = Vector2.zero;
             lastUiScrollApplyFrame = -1000;

@@ -12,26 +12,18 @@ namespace RimTouch
 {
     public static partial class TouchInputDriver
     {
-        private static bool IsInspectPaneLikelyVisible()
+        private static bool IsBlockingWindowAt(Vector2 gui)
         {
-            // Vanilla only draws the bottom-left inspect panel when something is selected
-            // (a pawn, an item stack, a zone, etc). Without this check, that whole screen
-            // region was being treated as "UI" unconditionally, even when it was genuinely
-            // bare map - silently breaking one-finger pan/select there (while two-finger
-            // pinch zoom, which never checks this, kept working fine), with no visible
-            // cause on screen. This is only ever called while on the local map.
-            //
-            // NumSelected includes non-pawn selections, unlike SelectedPawns.
-            try
+            WindowStack stack = Find.WindowStack;
+            if (stack != null && stack.GetWindowAt(gui) != null)
             {
-                return GetLocalSelector() != null && GetLocalSelector().NumSelected > 0;
-            }
-            catch
-            {
-                // If this check ever throws (version drift, etc.), fail safe back to "treat as
-                // UI" so we don't regress to the old false-negative behavior.
                 return true;
             }
+            if (Find.CurrentMap == null)
+            {
+                return !IsWorldMapActive();
+            }
+            return false;
         }
 
         private static bool IsLikelyUiPosition(Vector2 gui)
@@ -42,28 +34,68 @@ namespace RimTouch
                 return true;
             }
 
+            if (Current.ProgramState != ProgramState.Playing || !(Find.UIRoot is UIRoot_Play))
+            {
+                return !IsWorldMapActive();
+            }
+
             float width = UI.screenWidth;
             float height = UI.screenHeight;
-            if (gui.y > height - 190f)
-            {
-                return true;
-            }
-            if (Find.CurrentMap != null && gui.x < 700f && gui.y > height - 380f && IsInspectPaneLikelyVisible())
-            {
-                return true;
-            }
-            if (gui.x > width - 170f)
-            {
-                return true;
-            }
-            if (gui.y < 90f)
+            if (gui.y >= height - 38f)
             {
                 return true;
             }
 
-            if (Find.CurrentMap == null)
+            if (Find.ColonistBar != null)
             {
-                return !IsWorldMapActive();
+                ColonistBar.Entry entry;
+                if (Find.ColonistBar.TryGetEntryAt(gui, out entry))
+                {
+                    return true;
+                }
+            }
+
+            float gizmoHeight = GizmoGridDrawer.HeightDrawnRecently;
+            if (gizmoHeight > 0.5f
+                && gui.y >= height - 38f - gizmoHeight - 8f
+                && gui.x <= width - 150f)
+            {
+                return true;
+            }
+            if (gui.x >= width - 230f && gui.y >= height - 165f)
+            {
+                return true;
+            }
+
+            float alertsBottom = height - 165f;
+            LetterStack letters = Find.LetterStack;
+            if (letters != null && letters.LettersListForReading != null && letters.LettersListForReading.Count > 0)
+            {
+                alertsBottom = letters.LastTopY;
+                if (gui.x >= width - 68f
+                    && gui.y >= letters.LastTopY - 8f
+                    && gui.y <= height - 160f)
+                {
+                    return true;
+                }
+            }
+
+            UIRoot_Play root = Find.UIRoot as UIRoot_Play;
+            if (root.alerts != null)
+            {
+                float alertsHeight = root.alerts.AlertsHeight;
+                if (alertsHeight > 0.5f
+                    && gui.x >= width - 160f
+                    && gui.y >= alertsBottom - alertsHeight - 8f
+                    && gui.y <= alertsBottom)
+                {
+                    return true;
+                }
+            }
+
+            if (Find.CurrentMap == null && !IsWorldMapActive())
+            {
+                return true;
             }
 
             return false;
@@ -194,16 +226,18 @@ namespace RimTouch
             return new Vector2(touchDelta.x * scaleX, -touchDelta.y * scaleY);
         }
 
-        private static Vector2 GuiToLocalGuiPoint(Vector2 gui)
+        internal static Vector2 GuiToLocalGuiPoint(Vector2 gui)
         {
-            try
-            {
-                return GUIUtility.ScreenToGUIPoint(GuiToScreenGuiPoint(gui));
-            }
-            catch
-            {
-                return gui;
-            }
+            // Anchor to the current event, whose position already includes window,
+            // group and scroll offsets. Convert only the displacement: Waylith's
+            // absolute ScreenToGUIPoint offset is not scaled with GUI.matrix.
+            Event current = Event.current;
+            if (current == null) throw new InvalidOperationException("No GUI event for touch hit test.");
+            Vector3 mouse = Input.mousePosition;
+            Vector2 mouseScreen = new Vector2(mouse.x, Screen.height - mouse.y);
+            return current.mousePosition
+                + GUIUtility.ScreenToGUIPoint(GuiToScreenGuiPoint(gui))
+                - GUIUtility.ScreenToGUIPoint(mouseScreen);
         }
 
         private static Vector2 GuiToScreenGuiPoint(Vector2 gui)
@@ -213,44 +247,12 @@ namespace RimTouch
             return new Vector2(gui.x * scaleX, gui.y * scaleY);
         }
 
-        private static Vector2 CurrentEventMousePosition(Vector2 fallbackGui)
-        {
-            Event current = Event.current;
-            return current != null ? current.mousePosition : fallbackGui;
-        }
-
         private static bool SameRect(Rect a, Rect b)
         {
             return Mathf.Abs(a.x - b.x) <= 0.5f
                 && Mathf.Abs(a.y - b.y) <= 0.5f
                 && Mathf.Abs(a.width - b.width) <= 0.5f
                 && Mathf.Abs(a.height - b.height) <= 0.5f;
-        }
-
-        private static bool SameScrollRect(Rect a, Rect b)
-        {
-            if (SameRect(a, b))
-            {
-                return true;
-            }
-
-            float widthDelta = Mathf.Abs(a.width - b.width);
-            float heightDelta = Mathf.Abs(a.height - b.height);
-            if (widthDelta > Mathf.Max(32f, Mathf.Min(a.width, b.width) * 0.2f)
-                || heightDelta > Mathf.Max(32f, Mathf.Min(a.height, b.height) * 0.2f))
-            {
-                return false;
-            }
-
-            float xMin = Mathf.Max(a.xMin, b.xMin);
-            float yMin = Mathf.Max(a.yMin, b.yMin);
-            float xMax = Mathf.Min(a.xMax, b.xMax);
-            float yMax = Mathf.Min(a.yMax, b.yMax);
-            float overlapWidth = Mathf.Max(0f, xMax - xMin);
-            float overlapHeight = Mathf.Max(0f, yMax - yMin);
-            float overlapArea = overlapWidth * overlapHeight;
-            float minArea = Mathf.Min(Mathf.Max(1f, a.width * a.height), Mathf.Max(1f, b.width * b.height));
-            return overlapArea / minArea >= 0.65f;
         }
 
         private static Vector3 GuiToScreenPoint(Vector2 gui)

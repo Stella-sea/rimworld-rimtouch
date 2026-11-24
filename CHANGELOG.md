@@ -3,13 +3,81 @@
 All notable changes to this fork, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 versioning rules in `VERSIONING.md`. Dates are Asia/Shanghai.
-`testN` entries are prereleases cut from `fix/touch-issues`;
-a version without a `-testN` suffix is a stable release.
+`test.N` entries are prereleases cut on `dev` and promoted to `main` via
+Pull Request after hardware verification; a version without a `-test.N`
+suffix is a stable release.
 
 ## [Unreleased]
 
 - Nothing yet. The next test build goes here first, then moves under
   its version heading when tagged.
+
+## [0.1.0-test.15] — 2026-11-24
+
+Architectural touch/UI cleanup, HUD hit-test accuracy, nested `ScrollView`
+handoff, settings single-column fix, bounded compact diagnostics, and
+`dev` / `main` CI & release governance. Settings save version stays 9;
+translation files carry 38 synced keys each (English + Simplified Chinese).
+Build: `Build17.ps1` against RimWorld `1.7.4995 rev309` + Harmony `3.0.0.0`,
+0 diagnostics, 32/32 `[HarmonyPatch]` classes verified.
+`RimTouch.dll` SHA256
+`0a790517ed4780d9eb17b2d39d517f4fb279f8d6fc2203a567789ef3bfe7e71a`.
+Asset `RimTouch-fix-test15.zip` SHA256
+`8f1efd98cb52ef62e6d340f2ded71c907d4d8787b085576d5d0a274c77609f4a`.
+
+### Fixed
+
+- **Same-frame multi-pass control bounce (`ButtonInvisibleDraggable`):**
+  Waylith's frame-level `GetMouseButtonDown/Up` caused touch taps to trigger
+  `Widgets.ButtonInvisibleDraggable` multiple times across `Layout`,
+  `MouseDown`, `MouseUp`, and `Repaint` passes within a single frame.
+  Deduplicating non-`Idle` results per `(frameCount, window, screenRect)`
+  at `ButtonInvisibleDraggable` (`butRect` signature) fixes ordinary
+  checkboxes, tri-state work checkboxes, dropdowns, and draggable buttons
+  at the root while keeping cross-row drag-painting (`checkboxPainting`)
+  and mouse clicks intact.
+- **Exact HUD & window hit-testing (`UiHitTester`):** replaced hardcoded
+  `190/90/170/700x380` screen-edge margins (which swallowed 42%–56% of a
+  1280×807 tablet viewport as fake UI) with real RimWorld 1.7 HUD bounds
+  (`WindowStack.GetWindowAt`, bottom 38 px main-buttons bar,
+  `ColonistBar.TryGetEntryAt`, `GizmoGridDrawer.HeightDrawnRecently`,
+  bottom-right global controls, `LetterStack.LastTopY`, and
+  `AlertsReadout.AlertsHeight`). Two-finger pinch/twist now yields only to
+  real windows (`IsBlockingWindowAt`).
+- **UI scroll coordinate anchoring, window ownership, and nested `ScrollView`
+  handoff:** anchored local touch offsets against `Event.current.mousePosition`
+  using `ScreenToGUIPoint` deltas, preserved the 16 px scrollbar strip and
+  window-edge drag region, bound active scroll/inertia to the currently drawn
+  `Window`, and prioritized inner `ScrollView`s with automatic outer fallback
+  at scroll boundaries.
+- **Settings page clipped-column overflow (`RimTouchMod`):** set
+  `listing.maxOneColumn = true` so `Listing_Standard` never wraps controls
+  into an off-screen second column or shrinks `CurHeight` across passes, and
+  gated live zoom-range re-application to actual setting changes.
+- **Gesture completion, two-finger release inertia, and globe turntable speed:**
+  unified touch-up and disappeared-contact cleanup into `CompleteActiveGesture`
+  (preserving world drag-box completion and double-tap timing), removed the
+  obsolete 2-frame dropout stall on asymmetric two-finger release, disabled
+  `lockNorthUp` during dual-axis two-finger world pan, preserved final-frame
+  pinch/pan deltas, and applied `turntableDragSensitivity` (`0.5x–2.0x`) to
+  target displacement while keeping closed-loop feedback gain stable at `1.0`.
+- **Isolated Harmony bootstrap (`RimTouchBootstrap`):** merged duplicate
+  `Root.Update` prefixes and isolated per-class `CreateClassProcessor(type).Patch()`
+  calls so a single target mismatch logs a warning instead of aborting
+  subsequent patches.
+
+### Added
+
+- **Bounded in-memory touch diagnostics (`TouchInputProof`, Schema 2):**
+  temporary non-persisted settings checkbox (**Temporarily log touch
+  diagnostics to Debug log**) and **Copy compact touch diagnostics** button
+  (1024-record cap, stack-trace-free JSON, deduplicated scroll decisions).
+- **Repository governance, CI & release automation:** separated `dev` and
+  `main` workflows with GitHub Rulesets, added `.github/workflows/ci.yml`,
+  expanded `release-tag-check.yml`, and added `scripts/check-repo-hygiene.ps1`,
+  `scripts/check-csharp-syntax.ps1`, `scripts/test-harmony-patches.ps1`,
+  `scripts/package-release.ps1`, and isolated regression suites
+  (`test-ui-touch.ps1`, `test-input-proof.ps1`, `test-settings-layout.ps1`).
 
 ## [0.1.0-test.14] — 2026-11-19
 

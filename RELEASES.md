@@ -1,85 +1,65 @@
 # Releases
 
-## Where test builds live
+## Where builds live
 
-Test builds are published as **GitHub pre-releases on this fork**:
+Pre-release test builds and stable releases are published on GitHub Releases:
 
 https://github.com/Stella-sea/rimworld-rimtouch/releases
 
-- The Steam Workshop is **not** updated from GitHub.
-- Download the `RimTouch-fix-test<N>.zip` asset from the release you want and
-  extract it into RimWorld's `Mods/` folder.
+- Publishing on GitHub does **not** automatically update Steam Workshop.
+- Download `RimTouch-fix-test<N>.zip` (pre-release) or `RimTouch-v<VERSION>.zip` (stable) and extract it straight into `RimWorld/Mods/` (the archive contains a single `RimTouch/` root folder with `About/`, `Assemblies/RimTouch.dll`, and `Languages/`).
 
-## Versioning scheme
+## Branch & PR flow (`feat/*` → `dev` → `main`)
 
-- **Tags:** `v<MAJOR>.<MINOR>.<PATCH>-test.<N>` — e.g. `v0.1.0-test.12`.
-- `0.1.0` is the next stable version this work is heading toward
-  (`0.x` = pre-stable, anything may change).
-- `-test.<N>` is the SemVer pre-release identifier. `N` continues the
-  test-build numbering the project has used since test1 (test12 → `test.12`).
-- **The dot in `test.12` is load-bearing.** SemVer compares dot-separated
-  numeric identifiers numerically, so `test.12` correctly sorts after
-  `test.9`. A single suffix like `test12` would sort lexically
-  (`test12` < `test9`) and break ordering.
-- `About/About.xml` carries the same version (without the `v` prefix) in
-  `<modVersion>`. This is the version RimWorld shows in the mod list, so
-  the in-game version always matches the release tag.
-- Release assets keep the established filename `RimTouch-fix-test<N>.zip`;
-  release titles are `Test <N> — <short summary>`.
-- Every test build is marked as a GitHub **pre-release** — never a
-  stable / "latest" release.
-- **Tags are immutable:** never move, delete, or reuse a release tag.
-- When this work is ready to go upstream, the stable release drops the
-  suffix: `v0.1.0`. The temporary Chinese "测试版" About marker
-  (commit `fc7700a`) is reverted before any upstream PR — it exists only
-  to tell test builds apart in-game.
+| Branch | Role | Merge strategy | Protection |
+| --- | --- | --- | --- |
+| `main` | Verified stable baseline (only receives hardware-tested changes) | **Create a merge commit** from `dev` (never squash `dev → main`, so `main` and `dev` keep identical commit IDs and tags) | PR required, `ci / verify` required, no force-push, no delete |
+| `dev` | Active integration & pre-release line (`v0.1.0-test.<N>`) | **Squash and merge** from topic branches (`feat/*`, `fix/*`, `refactor/*`) | `ci / verify` required, no force-push, no delete |
+| `feat/*`, `fix/*`, `refactor/*` | Short-lived work branches forked from `dev` | Auto-deleted after PR merge | Verified by PR CI |
 
-## How to cut a test release
+## Versioning & tag scheme
 
-1. Land the fix on `fix/touch-issues` and push.
-2. Bump `<modVersion>` in `About/About.xml` to the new version
-   (e.g. `0.1.0-test.13`). Commit and push.
-3. Build with `Build17.ps1` (the supported build path; a Linux equivalent
-   lives alongside the local build helper, outside this repo). Expect
-   0 errors; record the `RimTouch.dll` SHA256.
-4. Run the simulation suites (`twist-test`, `globe-test`, `anchor-test` —
-   kept with the build helper, outside this repo) and record the results.
-5. Package `About/` + `Assemblies/RimTouch.dll` + `Languages/` into
-   `RimTouch-fix-test<N>.zip`. Record the zip SHA256.
-6. Create an annotated tag and push it:
-   `git tag -a v0.1.0-test.<N> -m "Test <N>: <summary>"` then
-   `git push origin v0.1.0-test.<N>`.
-7. Create the pre-release:
-   `gh release create v0.1.0-test.<N> --prerelease --title "Test <N> — <summary>" --notes-file <notes-file> RimTouch-fix-test<N>.zip`
-8. Open the Releases page and download the asset once to confirm it is
-   the right file.
+- **Pre-release tags (cut on `dev`):** `v<MAJOR>.<MINOR>.<PATCH>-test.<N>` — e.g. `v0.1.0-test.15`.
+  - **The dot in `test.15` is load-bearing:** SemVer compares dot-separated numeric identifiers numerically (`test.15` > `test.9`).
+  - Marked as GitHub **pre-release**, asset named `RimTouch-fix-test<N>.zip`, title `Test <N> — <short summary>`.
+- **Stable tags (cut on `main`):** `v<MAJOR>.<MINOR>.<PATCH>` — e.g. `v0.1.0`.
+  - Before cutting a stable tag, revert the test-only `"测试版"` marker in `Languages/ChineseSimplified/About/About.xml` (`release-tag-check.yml` and `package-release.ps1` enforce this automatically).
+- **`About/About.xml` `<modVersion>`** carries the exact version without leading `v` (`0.1.0-test.15` or `0.1.0`). `release-tag-check.yml` rejects any tag whose `<modVersion>` or `CHANGELOG.md` entry does not match.
+- **Tags are immutable:** protected by GitHub Ruleset (`refs/tags/v*`); never move, delete, or reuse a tag.
 
-## Release-notes skeleton (hand-written for test builds)
+## Two-tier CI & local deterministic release pipeline
 
-Auto-generated notes cannot say what needs testing, so test releases get
-hand-written notes:
+RimWorld 1.7 assemblies (`Assembly-CSharp.dll`, `UnityStubs.dll`) and `0Harmony.dll` are proprietary and must never be committed or uploaded to public CI. Verification is split cleanly into two tiers:
 
-- What changed (vs the previous test build)
-- What to test (numbered, concrete)
-- Known issues / still under observation
-- Install: extract into `Mods/`, enable Harmony + this mod, only one
-  RimTouch implementation
-- Build info: source commit, `RimTouch.dll` SHA256, zip SHA256, test results
+1. **Cloud CI on every Push / PR / Tag (`.github/workflows/ci.yml` & `release-tag-check.yml`):**
+   - `scripts/check-repo-hygiene.ps1` — blocks binaries/logs/local paths, validates `About.xml` and 100% English/Chinese XML key parity.
+   - `scripts/check-csharp-syntax.ps1` — parses all `Source/**/*.cs` files with Roslyn `CSharpSyntaxTree` and checks Harmony bootstrap isolation.
+   - `scripts/test-input-proof.ps1`, `scripts/test-ui-touch.ps1`, `scripts/test-settings-layout.ps1` — compiles production touch, UI scroll, tap-dedup, HUD, diagnostics, and settings layout code against lightweight stubs.
+2. **Local Build, Harmony Audit & Packaging (Windows / Linux with licensed RimWorld 1.7):**
+   ```powershell
+   # 1. Bump <modVersion> in About/About.xml, then compile deterministically:
+   pwsh -NoProfile -File ./Build17.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmony.dll'
 
-`.github/release.yml` defines the changelog categories used when notes are
-generated from commits (`--generate-notes`). It is a starting point, not a
-replacement for the hand-written notes above.
+   # 2. Verify all [HarmonyPatch] targets and parameter bindings against RimWorld 1.7:
+   pwsh -NoProfile -File ./scripts/test-harmony-patches.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmony.dll'
 
-## Why there is no CI build
+   # 3. Package verified release zip (verifies Build-Receipt.json & Source/*.cs hashes):
+   pwsh -NoProfile -File ./scripts/package-release.ps1 -Version '0.1.0-test.15'
+   ```
+   *(Linux bash equivalent: `scripts/package-release.sh <version> [staging-dir]`.)*
 
-- The build needs proprietary RimWorld 1.7 assemblies and the Harmony DLL
-  from a licensed game install. Those files are not in this repo and must
-  **never** be committed — RimWorld is not open source.
-- GitHub Actions runners have no licensed RimWorld install, and fetching
-  the game in CI would need Steam credentials and would redistribute
-  proprietary files. So there is no automated build workflow; the release
-  flow is local build + `gh release create`.
-- If a clean way to supply the game assemblies ever appears (e.g. a
-  private artifact the owner uploads by hand), a tag-triggered build
-  workflow can be added then. Until then, do not add CI that pretends
-  to build.
+## Cutting a release & syncing `dev` → `main`
+
+1. Merge topic PRs into `dev` and ensure `CHANGELOG.md` + `About/About.xml` `<modVersion>` are updated for the target version.
+2. Run the 3 local commands above (`Build17.ps1` → `test-harmony-patches.ps1` → `package-release.ps1`) and record `DLL SHA256` and `ZIP SHA256` in `CHANGELOG.md`.
+3. Commit, push to `dev`, and wait for `ci / verify` to pass.
+4. Create an **annotated** tag and push it:
+   ```powershell
+   git tag -a v0.1.0-test.15 -m "Test 15: <summary>"
+   git push origin v0.1.0-test.15
+   ```
+5. Publish the GitHub pre-release with the packaged zip:
+   ```powershell
+   gh release create v0.1.0-test.15 --prerelease --title "Test 15 — <summary>" --notes-file <notes-file> .build/releases/RimTouch-fix-test15.zip
+   ```
+6. Once hardware acceptance passes on the tablet, open a PR **`dev` → `main`** and merge using **Create a merge commit** so `main` advances cleanly to the verified release commit without diverging from `dev`.

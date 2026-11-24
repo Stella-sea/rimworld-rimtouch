@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Verse;
 
@@ -12,13 +13,73 @@ namespace RimTouch
 
         private static bool pendingTap;
         private static Vector2 tapGuiPosition;
-        private static Vector2 tapScreenGuiPosition;
         private static int tapFrame;
         private static int pendingClickCount = 1;
         private static bool hasLastTap;
         private static Vector2 lastTapGuiPosition;
         private static float lastTapTime;
         private static int suppressWindowCloseUntilFrame;
+        private static int draggableTriggerFrame = -1;
+        private static readonly List<DraggableTrigger> draggableTriggers = new List<DraggableTrigger>(8);
+
+        private struct DraggableTrigger
+        {
+            public Window window;
+            public Rect rect;
+        }
+
+        public static bool ShouldSuppressDuplicateDraggableInFrame(Rect rect)
+        {
+            ResetDraggableTriggersForFrame();
+            Window window = Find.WindowStack == null ? null : Find.WindowStack.currentlyDrawnWindow;
+            Rect screenRect = DraggableScreenRect(rect);
+            for (int i = 0; i < draggableTriggers.Count; i++)
+            {
+                DraggableTrigger trigger = draggableTriggers[i];
+                if (ReferenceEquals(trigger.window, window)
+                    && Mathf.Abs(trigger.rect.x - screenRect.x) <= 0.5f
+                    && Mathf.Abs(trigger.rect.y - screenRect.y) <= 0.5f
+                    && Mathf.Abs(trigger.rect.width - screenRect.width) <= 0.5f
+                    && Mathf.Abs(trigger.rect.height - screenRect.height) <= 0.5f)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public static void NotifyDraggableTriggered(Rect rect)
+        {
+            ResetDraggableTriggersForFrame();
+            draggableTriggers.Add(new DraggableTrigger
+            {
+                window = Find.WindowStack == null ? null : Find.WindowStack.currentlyDrawnWindow,
+                rect = DraggableScreenRect(rect)
+            });
+            pendingTap = false;
+        }
+
+        private static void ResetDraggableTriggersForFrame()
+        {
+            if (draggableTriggerFrame != Time.frameCount)
+            {
+                draggableTriggers.Clear();
+                draggableTriggerFrame = Time.frameCount;
+            }
+        }
+
+        private static Rect DraggableScreenRect(Rect rect)
+        {
+            try
+            {
+                Vector2 position = GUIUtility.GUIToScreenPoint(new Vector2(rect.x, rect.y));
+                return new Rect(position.x, position.y, rect.width, rect.height);
+            }
+            catch
+            {
+                return rect;
+            }
+        }
 
         public static bool ShouldSuppressWindowClose
         {
@@ -32,7 +93,6 @@ namespace RimTouch
         {
             pendingTap = true;
             tapGuiPosition = guiPosition;
-            tapScreenGuiPosition = GuiToScreenGuiPosition(guiPosition);
             tapFrame = Time.frameCount;
             pendingClickCount = RegisterTap(guiPosition);
             return pendingClickCount;
@@ -97,23 +157,15 @@ namespace RimTouch
             }
 
             Rect hitRect = GetTouchHitRect(rect);
-            Vector2 consumePosition = GUIUtility.ScreenToGUIPoint(tapScreenGuiPosition);
-            if (!hitRect.Contains(consumePosition))
+            Vector2 consumePosition;
+            try
             {
-                if (hitRect.Contains(current.mousePosition))
-                {
-                    consumePosition = current.mousePosition;
-                }
-                else if (hitRect.Contains(tapGuiPosition))
-                {
-                    consumePosition = tapGuiPosition;
-                }
-                else
-                {
-                    return false;
-                }
+                consumePosition = TouchInputDriver.GuiToLocalGuiPoint(tapGuiPosition);
             }
-
+            catch
+            {
+                return false;
+            }
             if (!hitRect.Contains(consumePosition))
             {
                 return false;
@@ -130,6 +182,7 @@ namespace RimTouch
 
         public static void Clear(bool clearTapHistory = true)
         {
+            // Preserve this frame's draggable triggers even if a control disables touch.
             pendingTap = false;
             pendingClickCount = 1;
 
@@ -155,11 +208,5 @@ namespace RimTouch
                 rect.height + TouchButtonPaddingPixels * 2f);
         }
 
-        private static Vector2 GuiToScreenGuiPosition(Vector2 guiPosition)
-        {
-            float scaleX = UI.screenWidth > 0 ? Screen.width / (float)UI.screenWidth : 1f;
-            float scaleY = UI.screenHeight > 0 ? Screen.height / (float)UI.screenHeight : 1f;
-            return new Vector2(guiPosition.x * scaleX, guiPosition.y * scaleY);
-        }
     }
 }
