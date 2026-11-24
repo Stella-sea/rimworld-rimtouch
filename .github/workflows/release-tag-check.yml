@@ -79,9 +79,15 @@ jobs:
       - name: Run repository and regression verification suite
         shell: pwsh
         run: |
-          ./scripts/check-repo-hygiene.ps1
-          ./scripts/check-csharp-syntax.ps1
-          ./scripts/test-input-proof.ps1
-          ./scripts/test-ui-touch.ps1
-          ./scripts/test-settings-layout.ps1
-          ./scripts/test-settings-layout.ps1 -VerifyRegression
+          $suites = @(
+              @('./scripts/check-repo-hygiene.ps1'),
+              @('./scripts/check-csharp-syntax.ps1'),
+              @('./scripts/test-input-proof.ps1'),
+              @('./scripts/test-ui-touch.ps1'),
+              @('./scripts/test-settings-layout.ps1'),
+              @('./scripts/test-settings-layout.ps1', '-VerifyRegression')
+          )
+          foreach ($argsList in $suites) {
+              & pwsh -NoProfile -File @argsList
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

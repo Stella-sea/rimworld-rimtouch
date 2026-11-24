@@ -50,5 +50,7 @@ jobs:
       - name: Settings single-column layout regression suite
         shell: pwsh
         run: |
-          ./scripts/test-settings-layout.ps1
-          ./scripts/test-settings-layout.ps1 -VerifyRegression
+          & pwsh -NoProfile -File ./scripts/test-settings-layout.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & pwsh -NoProfile -File ./scripts/test-settings-layout.ps1 -VerifyRegression
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
