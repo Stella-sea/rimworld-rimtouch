@@ -882,9 +882,12 @@ namespace RimTouch
                 SuppressUiClickFallout();
                 panGestureDistance += Vector2.Distance(mid, lastTwoFingerMidpoint);
                 Vector2 panSample = PanWorldByGuiDelta(lastTwoFingerMidpoint, mid);
-                SampleWorldPanVelocity(panSample);
+                if (!GlobeTwist.HasTwisted)
+                {
+                    SampleWorldPanVelocity(panSample);
+                }
                 ApplyWorldPinchZoom(lastTwoFingerDistance, distance);
-                if (RimTouchMod.Settings.enableGlobeTwist && twistDegrees != 0 && ApplyWorldTwist(twistDegrees, mid))
+                if (RimTouchMod.Settings != null && RimTouchMod.Settings.enableGlobeTwist && twistDegrees != 0 && ApplyWorldTwist(twistDegrees, mid))
                 {
                     StopInertia();
                     ClearInertiaSamples();
