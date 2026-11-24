@@ -582,6 +582,7 @@ namespace RimTouch
                 uiTouchStartWindowPosition = uiTouchStartWindow == null ? Vector2.zero
                     : new Vector2(uiTouchStartWindow.windowRect.x, uiTouchStartWindow.windowRect.y);
                 uiScrollCandidateWindow = null;
+                ResetUiSliderArbitration();
                 RecordTouchLifecycle("begin");
                 rightClickDone = false;
                 suppressReleaseTap = false;
@@ -1578,6 +1579,7 @@ namespace RimTouch
             suppressReleaseTap = false;
             uiScrollGestureActive = false;
             uiTouchStartWindow = uiScrollWindow = uiScrollCandidateWindow = null;
+            ResetUiSliderArbitration();
             uiScrollActiveRect = default(Rect);
             uiScrollLastGui = Vector2.zero;
             lastUiScrollApplyFrame = -1000;

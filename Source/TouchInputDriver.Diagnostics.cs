@@ -182,7 +182,37 @@ namespace RimTouch
                 case ScrollDecision.OtherWindow: return "otherWindow";
                 case ScrollDecision.Claimed: return "claimed";
                 case ScrollDecision.Outside: return "outside";
+                case ScrollDecision.ControlLocked: return "controlLocked";
                 default: return "belowSlop";
+            }
+        }
+
+        private static void RecordSliderArbitration(string action, UiSliderKind kind, int controlId,
+            UiControlDragAxis axis, Vector2 dragFromStart, ScrollProofEvent inputEvent)
+        {
+            if (!TouchInputProof.IsRecording) return;
+            try
+            {
+                EnsureProofSession();
+                Event current = Event.current;
+                Window window = Find.WindowStack == null ? null : Find.WindowStack.currentlyDrawnWindow;
+                TouchInputProof.RecordDiagnostic(new
+                {
+                    kind = "sliderArbitration", frame = Time.frameCount,
+                    gesture = proofGesture, action, sliderKind = kind.ToString(),
+                    controlId, axis = axis.ToString(),
+                    eventType = inputEvent.Type < 0 ? "none" : ((EventType)inputEvent.Type).ToString(),
+                    eventTypeAfter = current == null ? "none" : current.type.ToString(),
+                    eventMouse = ProofPoint(inputEvent.MousePosition),
+                    dragFromStart = ProofPoint(dragFromStart),
+                    scrollActive = uiScrollGestureActive,
+                    windowType = window == null ? null : window.GetType().FullName,
+                    windowId = window == null ? 0 : RuntimeHelpers.GetHashCode(window)
+                });
+            }
+            catch (Exception ex)
+            {
+                TouchInputProof.StopDiagnostics(ex);
             }
         }
     }
