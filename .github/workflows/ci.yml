@@ -1,0 +1,56 @@
+name: ci
+
+# Automated verification for pushes and pull requests on main and dev.
+# Proprietary RimWorld 1.7 and Harmony DLLs are never stored in git or CI;
+# instead, CI enforces repository/security hygiene, localization parity,
+# Roslyn C# syntax parsing across all Source/*.cs files, and isolated
+# behavioral/layout regression suites via PowerShell 7 + Roslyn stubs.
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Repository, metadata, and localization hygiene
+        shell: pwsh
+        run: ./scripts/check-repo-hygiene.ps1
+
+      - name: Roslyn C# syntax and bootstrap isolation check
+        shell: pwsh
+        run: ./scripts/check-csharp-syntax.ps1
+
+      - name: Diagnostics logger regression suite
+        shell: pwsh
+        run: ./scripts/test-input-proof.ps1
+
+      - name: UI touch, scroll, draggable dedup, and HUD regression suite
+        shell: pwsh
+        run: ./scripts/test-ui-touch.ps1
+
+      - name: Settings single-column layout regression suite
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -File ./scripts/test-settings-layout.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & pwsh -NoProfile -File ./scripts/test-settings-layout.ps1 -VerifyRegression
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

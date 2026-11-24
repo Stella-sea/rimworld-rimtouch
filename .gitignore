@@ -9,3 +9,6 @@
 .env*
 *.rws
 *.zip
+*.log
+TestReports/
+RimTouch-Input-Proof*.jsonl

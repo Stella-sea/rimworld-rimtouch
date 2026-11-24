@@ -32,10 +32,23 @@ namespace RimTouch
             Rect viewRect = new Rect(0f, 0f, inRect.width - 20f, Mathf.Max(inRect.height, settingsHeight));
             Widgets.BeginScrollView(inRect, ref settingsScroll, viewRect);
             Listing_Standard listing = new Listing_Standard();
+            // Measure the complete vertical list; automatic columns would clip
+            // overflow to the right and report only the last column's height.
+            listing.maxOneColumn = true;
             listing.Begin(viewRect);
 
             listing.CheckboxLabeled("RimTouch.EnableTouchMode".Translate(), ref Settings.enableTouchMode, "RimTouch.EnableTouchModeDesc".Translate());
             listing.Label("RimTouch.Input".Translate() + TouchSource.Status);
+            bool inputDiagnostics = TouchInputProof.RuntimeDebugLogEnabled;
+            listing.CheckboxLabeled("RimTouch.InputDiagnostics".Translate(), ref inputDiagnostics, "RimTouch.InputDiagnosticsDesc".Translate());
+            if (inputDiagnostics != TouchInputProof.RuntimeDebugLogEnabled)
+            {
+                TouchInputProof.SetRuntimeDebugLog(inputDiagnostics);
+            }
+            if (listing.ButtonText("RimTouch.CopyInputDiagnostics".Translate()))
+            {
+                GUIUtility.systemCopyBuffer = TouchInputProof.CopyText;
+            }
             listing.CheckboxLabeled("RimTouch.AllowExtraUiScales".Translate(), ref Settings.allowExtraUiScales, "RimTouch.AllowExtraUiScalesDesc".Translate());
             if (!RimTouchBootstrap.UiScaleHookReady) listing.Label("RimTouch.ExtraScalesUnavailable".Translate());
             if (listing.ButtonText("RimTouch.ResetUiScale".Translate()))
@@ -83,6 +96,8 @@ namespace RimTouch
             listing.Gap();
             listing.Label("RimTouch.ExtendedZoomRangeNote".Translate());
             bool extendedZoomEnabledBefore = Settings.extendedZoomEnabled;
+            float zoomInMinBefore = Settings.extendedZoomInMin;
+            float zoomOutMaxBefore = Settings.extendedZoomOutMax;
             listing.CheckboxLabeled("RimTouch.EnableExtendedZoomRange".Translate(), ref Settings.extendedZoomEnabled, "RimTouch.EnableExtendedZoomRangeDesc".Translate());
 
             listing.Label("RimTouch.ZoomInMin".Translate() + Settings.extendedZoomInMin.ToString("0.0"));
@@ -102,7 +117,9 @@ namespace RimTouch
                 ApplyExtendedZoomRange();
             }
 
-            if (Settings.extendedZoomEnabled != extendedZoomEnabledBefore || Settings.extendedZoomEnabled)
+            if (Settings.extendedZoomEnabled != extendedZoomEnabledBefore
+                || Mathf.Abs(Settings.extendedZoomInMin - zoomInMinBefore) > 0.0001f
+                || Mathf.Abs(Settings.extendedZoomOutMax - zoomOutMaxBefore) > 0.0001f)
             {
                 // Re-apply live so dragging the sliders gives immediate feedback in-game instead
                 // of only taking effect after the next save/load.

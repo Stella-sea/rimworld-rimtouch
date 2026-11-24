@@ -18,7 +18,7 @@ Test builds are published as GitHub pre-releases on this fork (the Steam Worksho
 
 https://github.com/Stella-sea/rimworld-rimtouch/releases
 
-Each test build is tagged `v0.1.0-test.<N>` (a SemVer pre-release; the number continues the test1, test2, … series) and ships as `RimTouch-fix-test<N>.zip` containing a single `RimTouch/` folder — extract it straight into `RimWorld/Mods/`. Latest: **test12** (2026-11-11, flat settings, dual-axis mode, jitter + north-lock fixes). See [RELEASES.md](RELEASES.md) for the versioning and release scheme and [CHANGELOG.md](CHANGELOG.md) for what changed and what to test.
+Each test build is tagged `v0.1.0-test.<N>` (a SemVer pre-release; the number continues the test1, test2, … series) and ships as `RimTouch-fix-test<N>.zip` containing a single `RimTouch/` folder — extract it straight into `RimWorld/Mods/`. Latest: **test15** (2026-11-24, `ButtonInvisibleDraggable` multi-pass tap dedup, exact HUD & window hit-testing, nested `ScrollView` priority, unified gesture lifecycle & turntable sensitivity fix). Active integration runs on `dev` and promotes to `main` via PR after tablet acceptance; see [RELEASES.md](RELEASES.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [CHANGELOG.md](CHANGELOG.md).
 
 ## Build for 1.7
 
@@ -29,3 +29,7 @@ Use PowerShell 7 and an installed .NET SDK. Supply your licensed game and matchi
 ```
 
 The portable helper compiles only Source/ into .build/1.7, without downloading dependencies, starting a game, copying a runtime or changing installed mods. Archived IDE project files may retain legacy references; the 1.7 helper is the supported build path for this snapshot. Legacy source, where included, is separate and has not been newly tested. Assets have separate terms in ASSETS.md.
+
+## Optional input diagnostics
+
+Enable **Temporarily log touch diagnostics to Debug log** in RimTouch settings, reproduce the issue, then use **Copy compact touch diagnostics** (Chinese: **复制精简触控诊断**). This copies JSON without per-entry game stack traces; the normal Debug log remains available. No launch arguments, restart or separate output file are needed. The temporary checkbox is not saved and capture stops after 1024 records; enable it again for a new capture. Existing command-line/file capture remains optional. See [the capture guide](docs/input-diagnostics.md) for fields and limits.

@@ -81,18 +81,6 @@ namespace RimTouch
             ReflectionGuard.TrySetField(CameraMouseBottomEdgeStartField, cameraDriver, 0f);
         }
 
-        private static Vector3 GetCameraRootPos(CameraDriver cameraDriver)
-        {
-            Vector3 rootPos;
-            return TryGetCameraRootPos(cameraDriver, out rootPos) ? rootPos : Vector3.zero;
-        }
-
-        private static float GetCameraRootSize(CameraDriver cameraDriver)
-        {
-            float rootSize;
-            return TryGetCameraRootSize(cameraDriver, out rootSize) ? rootSize : GetMinZoomSize(cameraDriver);
-        }
-
         private static bool TryGetCameraRootPos(CameraDriver cameraDriver, out Vector3 rootPos)
         {
             rootPos = Vector3.zero;
@@ -101,8 +89,8 @@ namespace RimTouch
 
         private static bool TryGetCameraRootSize(CameraDriver cameraDriver, out float rootSize)
         {
-            rootSize = 0f;
-            return cameraDriver != null && ReflectionGuard.TryGetField(CameraRootSizeField, cameraDriver, out rootSize);
+            rootSize = cameraDriver != null ? cameraDriver.RootSize : 0f;
+            return cameraDriver != null;
         }
 
         private static float GetMinZoomSize(CameraDriver cameraDriver)
