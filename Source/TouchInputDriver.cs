@@ -86,11 +86,6 @@ namespace RimTouch
         private static bool suppressReleaseTap;
         private static bool worldPanAnchorValid;
         private static Vector3 worldPanAnchorPoint;
-        // The same grabbed point in sphere-LOCAL coords (a fixed geographic location).
-        // The projected turntable needs it: each frame it uses the anchor CURRENT world
-        // direction (sphereRotation * local), not the drag-start world direction, so the
-        // projection is a feedback loop instead of accumulating error.
-        private static Vector3 worldPanAnchorLocal = Vector3.zero;
         private static bool worldInertiaAnchorValid;
         private static Vector3 worldInertiaAnchorPoint;
         private static Vector2 worldInertiaGui;
@@ -757,18 +752,12 @@ namespace RimTouch
                         mode = TouchMode.MapPan;
                         panGestureDistance = moveDistance;
                         lastWorldPanSampleTime = startTime;
-                        worldPanAnchorValid = ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(startGui, out worldPanAnchorPoint);
-                        if (worldPanAnchorValid) UpdateWorldPanAnchorLocal();
+                        worldPanAnchorValid = !LockNorthUpOnDragEnabled()
+                            && ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(startGui, out worldPanAnchorPoint);
                         if (LockNorthUpOnDragEnabled())
                         {
-                            // Dual-axis mode: the projected turntable is roll-free by
-                            // construction, so the vanilla north-up lock must stay off
-                            // while dragging. If it is on, the vanilla driver snaps
-                            // the rotation to north-up every frame
-                            // (RotateSoNorthIsUp(interpolate: false)) and fights the
-                            // turntable's anchor feedback loop - that fight is the
-                            // dual-axis jitter test12 did not fix (the lock was left
-                            // on by an earlier dual-axis-off drag or the default).
+                            // Take over at drag start, after tap/drag classification.
+                            // A later native north-up button can still reset the view.
                             if (Find.PlaySettings != null)
                             {
                                 Find.PlaySettings.lockNorthUp = false;
@@ -797,7 +786,7 @@ namespace RimTouch
             {
                 SuppressUiClickFallout();
                 panGestureDistance = Mathf.Max(panGestureDistance, moveDistance);
-                Vector2 panSample = PanWorldByGuiDelta(lastGui, gui, startGui);
+                Vector2 panSample = PanWorldByGuiDelta(lastGui, gui);
                 SampleWorldPanVelocity(panSample);
                 CancelWorldDragBox();
             }
@@ -872,8 +861,8 @@ namespace RimTouch
                 twoFingerPanAnchorMap = IsWorldMapActive() ? Vector3.zero : (Find.CurrentMap != null ? GuiToMapPosition(mid) : Vector3.zero);
                 lastPanSampleTime = Time.realtimeSinceStartup;
                 lastWorldPanSampleTime = lastPanSampleTime;
-                worldPanAnchorValid = IsWorldMapActive() && ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(mid, out worldPanAnchorPoint);
-                if (worldPanAnchorValid) UpdateWorldPanAnchorLocal();
+                worldPanAnchorValid = !LockNorthUpOnDragEnabled() && IsWorldMapActive()
+                    && ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(mid, out worldPanAnchorPoint);
                 lastZoomSampleTime = lastPanSampleTime;
                 panGestureDistance = 0f;
                 ClearInertiaSamples();
@@ -890,33 +879,19 @@ namespace RimTouch
 
             if (IsWorldMapActive())
             {
-                if (LockNorthUpOnDragEnabled())
-                {
-                    if (Find.PlaySettings != null)
-                    {
-                        Find.PlaySettings.lockNorthUp = false;
-                    }
-                    CancelNorthReturn();
-                }
                 SuppressUiClickFallout();
                 panGestureDistance += Vector2.Distance(mid, lastTwoFingerMidpoint);
-                Vector2 panSample = PanWorldByGuiDelta(lastTwoFingerMidpoint, mid, twoFingerStartMidpoint);
+                Vector2 panSample = PanWorldByGuiDelta(lastTwoFingerMidpoint, mid);
                 SampleWorldPanVelocity(panSample);
                 ApplyWorldPinchZoom(lastTwoFingerDistance, distance);
                 if (RimTouchMod.Settings.enableGlobeTwist && twistDegrees != 0 && ApplyWorldTwist(twistDegrees, mid))
                 {
                     StopInertia();
                     ClearInertiaSamples();
-                    // The twist rotated the sphere, so the sphere-local anchor
-                    // captured at gesture start is stale; refresh it so the pan
-                    // path keeps tracking the right geographic point.
-                    // Re-raycast at the CURRENT midpoint: recomputing the local
-                    // anchor from the pre-twist world point would pin a
-                    // different geographic point (the old point under the new
-                    // rotation), so the pan would chase the wrong spot and
-                    // drift after every twist.
-                    worldPanAnchorValid = ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(mid, out worldPanAnchorPoint);
-                    if (worldPanAnchorValid) UpdateWorldPanAnchorLocal();
+                    // Only free orbit keeps a geographic anchor. Re-acquire it
+                    // under the current midpoint after that mode's twist correction.
+                    worldPanAnchorValid = !LockNorthUpOnDragEnabled()
+                        && ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(mid, out worldPanAnchorPoint);
                 }
                 CancelWorldDragBox();
             }
@@ -962,7 +937,7 @@ namespace RimTouch
                 else
                 {
                     float moveDistance = Vector2.Distance(releaseGui, startGui);
-                    if (moveDistance <= DragSlopPixels && !rightClickDone)
+                    if (moveDistance <= DragSlopPixels && !rightClickDone && !suppressReleaseTap)
                     {
                         if (IsWorldMapActive())
                         {
@@ -1605,7 +1580,6 @@ namespace RimTouch
             lastUiScrollApplyFrame = -1000;
             worldPanAnchorValid = false;
             worldPanAnchorPoint = Vector3.zero;
-            worldPanAnchorLocal = Vector3.zero;
             worldDoubleTapPrimed = false;
             worldDragBoxStartGui = Vector2.zero;
             panGestureDistance = 0f;

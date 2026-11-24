@@ -30,6 +30,8 @@ This repository maintains the Windows touch continuation of RimTouch for RimWorl
    pwsh -NoProfile -File ./scripts/test-input-proof.ps1
    pwsh -NoProfile -File ./scripts/test-ui-touch.ps1
    pwsh -NoProfile -File ./scripts/test-settings-layout.ps1
+   pwsh -NoProfile -File ./scripts/test-world-touch.ps1
+   pwsh -NoProfile -File ./scripts/test-world-touch.ps1 -VerifyRegression
    ```
 2. **Full compilation & Harmony patch verification (requires licensed RimWorld 1.7 + `0Harmony.dll`):**
    ```powershell
