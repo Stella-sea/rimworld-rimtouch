@@ -1,40 +1,87 @@
 name: release-tag-check
 
-# Runs when a version tag is pushed. This repo cannot CI-build the mod:
-# compiling needs the licensed RimWorld 1.7 assemblies and the Harmony
-# DLL, which must not live in the repo or in CI (see VERSIONING.md).
-# So this workflow only validates the release hygiene — the build
-# evidence is the local deterministic build whose DLL SHA256 is
-# recorded in the release notes.
+# Validates release tags (vMAJOR.MINOR.PATCH and vMAJOR.MINOR.PATCH-test.N).
+# Compiling RimTouch.dll requires a licensed local RimWorld 1.7 install, so
+# binaries are built locally with Build17.ps1 + scripts/package-release.ps1.
+# This workflow enforces tag immutability conventions, annotated tag metadata,
+# About/About.xml <modVersion> alignment, CHANGELOG.md completeness, stable
+# branch/marker guards, and the full automated verification suite.
 on:
   push:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   check-tag:
+    name: check-tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Fetch annotated tag objects
-        # actions/checkout checks out the tag's commit but does not
-        # fetch the annotated tag object, so `git cat-file -t <tag>`
-        # would see a commit and misreport the tag as lightweight.
-        run: git fetch --tags --force
-      - name: Tag must be SemVer, optionally a -testN prerelease
+
+      - name: Fetch annotated tag and branch refs
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          echo "tag: $TAG"
-          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-test\.[0-9]+)?$' \
-            || { echo "tag $TAG is not vMAJOR.MINOR.PATCH[-test.N] (see RELEASES.md)" >&2; exit 1; }
-      - name: CHANGELOG must have an entry for this version
+          git fetch --tags --force
+          git fetch origin main:refs/remotes/origin/main
+
+      - name: Validate tag format, annotation, About.xml, and CHANGELOG.md
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          grep -q "^\#\# \[$VERSION\]" CHANGELOG.md \
-            || { echo "CHANGELOG.md has no '## [$VERSION]' entry" >&2; exit 1; }
-      - name: Tag must be annotated
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:TAG_NAME
+          Write-Host "Validating tag: $tag"
+
+          if ($tag -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+(-test\.[0-9]+)?)$') {
+              throw "Tag '$tag' does not match vMAJOR.MINOR.PATCH[-test.N] (see RELEASES.md)."
+          }
+          $version = $Matches[1]
+          $isPrerelease = $version -like '*-test.*'
+
+          $objType = (& git cat-file -t $tag).Trim()
+          if ($objType -ne 'tag') {
+              throw "Tag '$tag' is '$objType' (lightweight); use 'git tag -a $tag' (see VERSIONING.md)."
+          }
+
+          [xml]$about = Get-Content -LiteralPath 'About/About.xml' -Raw
+          $aboutVer = "$($about.ModMetaData.modVersion)".Trim()
+          if ($aboutVer -ne $version) {
+              throw "About/About.xml <modVersion> is '$aboutVer', expected '$version'."
+          }
+
+          $changelog = Get-Content -LiteralPath 'CHANGELOG.md' -Raw
+          $escapedVer = [regex]::Escape($version)
+          if ($changelog -notmatch "(?m)^## \[$escapedVer\]") {
+              throw "CHANGELOG.md has no '## [$version]' section."
+          }
+
+          if (-not $isPrerelease) {
+              & git merge-base --is-ancestor $tag refs/remotes/origin/main
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Stable tag '$tag' must point to a commit on origin/main."
+              }
+              if (Test-Path -LiteralPath 'Languages/ChineseSimplified/About/About.xml') {
+                  $zhAbout = Get-Content -LiteralPath 'Languages/ChineseSimplified/About/About.xml' -Raw
+                  if ($zhAbout -match '测试版') {
+                      throw "Stable tag '$tag' still contains test-only marker in Languages/ChineseSimplified/About/About.xml."
+                  }
+              }
+          }
+
+          Write-Host "PASS tag metadata: $tag -> modVersion $version"
+
+      - name: Run repository and regression verification suite
+        shell: pwsh
         run: |
-          git cat-file -t "${GITHUB_REF_NAME}" | grep -q '^tag$' \
-            || { echo "tag ${GITHUB_REF_NAME} is lightweight; use git tag -a (see VERSIONING.md)" >&2; exit 1; }
+          ./scripts/check-repo-hygiene.ps1
+          ./scripts/check-csharp-syntax.ps1
+          ./scripts/test-input-proof.ps1
+          ./scripts/test-ui-touch.ps1
+          ./scripts/test-settings-layout.ps1
+          ./scripts/test-settings-layout.ps1 -VerifyRegression
