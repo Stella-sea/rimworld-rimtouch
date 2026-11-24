@@ -25,7 +25,6 @@ namespace RimTouch
         private const float MinPanInertiaStartSpeed = 0.12f;
         private const float MinPanInertiaSpeed = 0.035f;
         private const float MaxPanInertiaSpeed = 120f;
-        private const float WorldPanPixelsToRotation = 0.12f;
         private const float WorldPanInertiaStrengthScale = 0.56f;
         private const float MinWorldPanInertiaStartSpeed = 80f;
         private const float MinWorldPanInertiaSpeed = 8f;
@@ -86,6 +85,8 @@ namespace RimTouch
         private static bool suppressReleaseTap;
         private static bool worldPanAnchorValid;
         private static Vector3 worldPanAnchorPoint;
+        private static bool worldFreeStartedOnGlobe;
+        private static bool worldFreeLimbCoasting;
         private static bool worldInertiaAnchorValid;
         private static Vector3 worldInertiaAnchorPoint;
         private static Vector2 worldInertiaGui;
@@ -753,8 +754,10 @@ namespace RimTouch
                         mode = TouchMode.MapPan;
                         panGestureDistance = moveDistance;
                         lastWorldPanSampleTime = startTime;
+                        worldFreeLimbCoasting = false;
                         worldPanAnchorValid = !LockNorthUpOnDragEnabled()
                             && ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(startGui, out worldPanAnchorPoint);
+                        worldFreeStartedOnGlobe = worldPanAnchorValid;
                         if (LockNorthUpOnDragEnabled())
                         {
                             // Take over at drag start, after tap/drag classification.
@@ -765,7 +768,7 @@ namespace RimTouch
                             }
                             CancelNorthReturn();
                         }
-                        else
+                        else if (worldPanAnchorValid)
                         {
                             // Dual-axis mode is off, so the vanilla drag is in charge:
                             // re-engage the vanilla north-up lock. A two-finger twist
@@ -862,8 +865,10 @@ namespace RimTouch
                 twoFingerPanAnchorMap = IsWorldMapActive() ? Vector3.zero : (Find.CurrentMap != null ? GuiToMapPosition(mid) : Vector3.zero);
                 lastPanSampleTime = Time.realtimeSinceStartup;
                 lastWorldPanSampleTime = lastPanSampleTime;
+                worldFreeLimbCoasting = false;
                 worldPanAnchorValid = !LockNorthUpOnDragEnabled() && IsWorldMapActive()
                     && ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(mid, out worldPanAnchorPoint);
+                worldFreeStartedOnGlobe = worldPanAnchorValid;
                 lastZoomSampleTime = lastPanSampleTime;
                 panGestureDistance = 0f;
                 ClearInertiaSamples();
@@ -896,6 +901,7 @@ namespace RimTouch
                     // under the current midpoint after that mode's twist correction.
                     worldPanAnchorValid = !LockNorthUpOnDragEnabled()
                         && ShouldUseWorldAnchorPan() && TryGetWorldSpherePointAtGui(mid, out worldPanAnchorPoint);
+                    worldFreeStartedOnGlobe = worldPanAnchorValid;
                 }
                 CancelWorldDragBox();
             }
@@ -1585,6 +1591,8 @@ namespace RimTouch
             lastUiScrollApplyFrame = -1000;
             worldPanAnchorValid = false;
             worldPanAnchorPoint = Vector3.zero;
+            worldFreeStartedOnGlobe = false;
+            worldFreeLimbCoasting = false;
             worldDoubleTapPrimed = false;
             worldDragBoxStartGui = Vector2.zero;
             panGestureDistance = 0f;
