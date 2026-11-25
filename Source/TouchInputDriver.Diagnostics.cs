@@ -90,6 +90,25 @@ namespace RimTouch
             }
         }
 
+        private static void RecordMapTapDecision(string action)
+        {
+            if (!TouchInputProof.IsRecording) return;
+            try
+            {
+                TouchInputProof.RecordDiagnostic(new
+                {
+                    kind = "mapTapDecision", frame = Time.frameCount, gesture = proofGesture,
+                    tap = mapTap.Sequence, finger = mapTap.Finger, action, world = mapTap.IsWorld,
+                    start = ProofPoint(mapTap.Start), release = ProofPoint(mapTap.Release),
+                    released = mapTap.Released, mouseDown = mapTap.MouseDown, mouseUp = mapTap.MouseUp
+                });
+            }
+            catch (Exception ex)
+            {
+                TouchInputProof.StopDiagnostics(ex);
+            }
+        }
+
         private static void RecordScrollDecision(Rect outRect, Rect viewRect, Vector2 before, Vector2 after,
             bool wasActive, bool wasInertia, Vector2 previousScrollGui,
             ScrollProofEvent inputEvent, bool handled, ScrollDecision scrollDecision)

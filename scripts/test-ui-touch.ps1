@@ -1,6 +1,17 @@
-param([switch]$VerifyRegression)
+param(
+    [switch]$VerifyRegression,
+    [ValidateSet('inspect-label', 'tap-dispatch', 'ui-claim', 'control-claim')][string]$RegressionCase
+)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+if ($VerifyRegression -and !$RegressionCase) {
+    foreach ($caseName in @('inspect-label', 'tap-dispatch', 'ui-claim', 'control-claim')) {
+        & pwsh -NoProfile -File $PSCommandPath -VerifyRegression -RegressionCase $caseName
+        if ($LASTEXITCODE -ne 0) { throw "Negative control failed: $caseName" }
+    }
+    exit
+}
+if ($RegressionCase -and !$VerifyRegression) { throw 'RegressionCase requires VerifyRegression.' }
 # Isolated policy tests compile the actual VelocityHistory, UiScroll, TouchTapRepair,
 # UiHitTester, and ButtonInvisibleDraggable patch logic against lightweight stubs.
 $stubs = @'
@@ -91,6 +102,7 @@ namespace Verse {
  public enum ProgramState { Entry, MapInitializing, Playing }
  public static class Current { public static ProgramState ProgramState = ProgramState.Playing; }
  public class UIRoot {}
+ public class UIRoot_Entry : UIRoot {}
  public class Map {}
  public class Letter {}
  public class LetterStack { public System.Collections.Generic.List<Letter> LettersListForReading = new System.Collections.Generic.List<Letter>(); public float LastTopY = 600f; }
@@ -227,6 +239,7 @@ namespace Verse {
   public static WindowStack WindowStack=new WindowStack();
   public static UIRoot UIRoot;
   public static Map CurrentMap;
+  public static object World=new object();
   public static RimWorld.ColonistBar ColonistBar;
   public static LetterStack LetterStack=new LetterStack();
   public static DesignatorManager DesignatorManager=new DesignatorManager();
@@ -270,7 +283,7 @@ namespace HarmonyLib {
 namespace RimTouch.TouchPlatform {
  public enum ContactPhase {Began,Moved,Stationary,Ended}
  public struct ContactTouch {public long fingerId;public ContactPhase phase;public UnityEngine.Vector2 position,deltaPosition;}
- public static class TouchSource {public static int Count;public static ContactTouch touch;public static ContactTouch GetTouch(int i)=>touch;}
+ public static class TouchSource {public static bool Canceled;public static int Count;public static ContactTouch touch;public static ContactTouch GetTouch(int i)=>touch;}
  public static class TouchInputProof {public static bool IsRecording=>false;}
 }
 namespace RimTouch {
@@ -299,6 +312,7 @@ namespace RimTouch {
    static UnityEngine.Vector3 startMap,panAnchorMap;
    static Verse.Map gestureMap;
    static bool gestureIsWorld,rightClickDone,selectPrimed,worldDoubleTapPrimed;
+   static bool hadTouchLastFrame;
    static float startTime,lastWorldPanSampleTime,lastWorldTapTime,lastSignificantMovementElapsed,panGestureDistance,lastPanSampleTime;
    const float SelectHoldSeconds=.32f,RightClickHoldSeconds=.5f,RightClickHoldSlopPixels=22;
    static int localClicks,worldClicks,rightClicks,uiTaps,worldUpdates,panUpdates;
@@ -320,7 +334,8 @@ namespace RimTouch {
    static void DoMapLeftClick(UnityEngine.Vector2 p){localClicks++;}
    static void DoWorldLeftClick(UnityEngine.Vector2 p){worldClicks++;}
    static void QueueUiTap(UnityEngine.Vector2 p){uiTaps++;}
-   static void FinishTouch(){mode=TouchMode.None;uiScrollGestureActive=false;}
+   static void ResetState(){mode=TouchMode.None;uiScrollGestureActive=false;}
+   static void RecordMapTapDecision(string action){}
   static bool IsWorldMapActive()=>worldActive;
   static bool IsTwoFingerTapGesture()=>false;
   static void CancelRimWorldDragBox(){}static void CancelWorldDragBox(){}
@@ -725,10 +740,11 @@ $vel = [IO.File]::ReadAllText((Join-Path $root 'Source/Input/VelocityHistory.cs'
 $scroll = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchInputDriver.UiScroll.cs'))
 $tap = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchTapRepair.cs'))
 $hit = [IO.File]::ReadAllText((Join-Path $root 'Source/UiHitTester.cs'))
-if ($VerifyRegression) {
+if ($RegressionCase -eq 'inspect-label') {
     $correct = '|| IsInspectTabAt(stack, gui)'
     if (!$hit.Contains($correct)) { throw 'Inspect label mutation point not found.' }
     $hit = $hit.Replace($correct, '')
+    $expectedFailure = 'Inspect label above window missed'
 }
 $boot = [IO.File]::ReadAllText((Join-Path $root 'Source/RimTouchBootstrap.cs'))
 $driver = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchInputDriver.cs'))
@@ -753,8 +769,22 @@ $ownership = @(
     (Get-DriverMember 'public static bool ShouldSuppressVanillaWorldToolInput'),
     (Get-DriverMember 'public static bool ShouldSuppressAfterMultiTouch'),
     (Get-DriverMember 'private static void UpdateOneFinger('),
-    (Get-DriverMember 'private static void CompleteActiveGesture(')
+    (Get-DriverMember 'private static void CompleteActiveGesture('),
+    (Get-DriverMember 'private static void FinishTouch(')
 ) -join "`n"
+$uiTap = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchInputDriver.UiTap.cs'))
+if ($RegressionCase -eq 'tap-dispatch') {
+    $ownership = $ownership.Replace('ReleaseMapTap(releaseGui);', 'if (IsWorldMapActive()) DoWorldLeftClick(releaseGui); else DoMapLeftClick(releaseGui);')
+    $expectedFailure = 'tap committed before UI'
+}
+if ($RegressionCase -eq 'ui-claim') {
+    $uiTap = $uiTap.Replace('if (state.Input.type == EventType.Used)', 'if (state.Input.type == EventType.MouseDrag)')
+    $expectedFailure = 'consumed UI press leaked to map'
+}
+if ($RegressionCase -eq 'control-claim') {
+    $uiTap = $uiTap.Replace('if (rect.Contains(GuiToLocalGuiPoint(gui)))', 'if (rect.width < 0 && rect.Contains(GuiToLocalGuiPoint(gui)))')
+    $expectedFailure = 'non-consuming control leaked to map'
+}
 $ownership = "namespace RimTouch { public static partial class TouchInputDriver { $ownership } }"
 $modes = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchMode.cs'))
 $bFrom = $boot.IndexOf('    [HarmonyPatch(typeof(Widgets), "ButtonInvisibleDraggable"')
@@ -763,14 +793,19 @@ $draggablePatch = 'namespace RimTouch {' + $boot.Substring($bFrom, $bTo - $bFrom
 $wFrom = $boot.IndexOf('    [HarmonyPatch(typeof(WorldTargeter)')
 $wTo = $boot.IndexOf('    [HarmonyPatch(', $wFrom + 5)
 $worldToolPatch = 'namespace RimTouch {' + $boot.Substring($wFrom, $wTo - $wFrom) + '}'
-$body = ($modes + "`n" + $vel + "`n" + $scroll + "`n" + $tap + "`n" + $hit + "`n" + $ownership + "`n" + $draggablePatch + "`n" + $worldToolPatch) -replace '(?m)^using [^;]+;\r?\n',''
+$dispatchFrom = $boot.IndexOf('    [HarmonyPatch(typeof(UIRoot_Entry)')
+$dispatchTo = $boot.IndexOf('    [HarmonyPatch(typeof(Selector)', $dispatchFrom)
+$dispatchPatches = 'namespace RimTouch {' + $boot.Substring($dispatchFrom, $dispatchTo - $dispatchFrom) + '}'
+$tapTests = [IO.File]::ReadAllText((Join-Path $root 'scripts/tests/UiTapDispatchTests.cs'))
+$body = ($modes + "`n" + $vel + "`n" + $scroll + "`n" + $tap + "`n" + $hit + "`n" + $ownership + "`n" + $uiTap + "`n" + $tapTests + "`n" + $dispatchPatches + "`n" + $draggablePatch + "`n" + $worldToolPatch) -replace '(?m)^using [^;]+;\r?\n',''
 Add-Type -WarningAction SilentlyContinue -CompilerOptions '/nowarn:0169,0649,0414' -TypeDefinition ("using System; using System.Collections.Generic; using System.Reflection; using HarmonyLib; using RimWorld; using RimWorld.Planet; using UnityEngine; using Verse; using RimTouch.TouchPlatform;`n" + $stubs + $body)
 try {
     [RimTouch.TouchInputDriver]::RunTests()
-    if ($VerifyRegression) { throw 'Inspect label regression mutation unexpectedly passed.' }
+    [RimTouch.TouchInputDriver]::RunTapDispatchTests()
+    if ($VerifyRegression) { throw 'Regression mutation unexpectedly passed.' }
 } catch {
-    if (!$VerifyRegression -or $_.Exception.ToString() -notmatch 'Inspect label above window missed') { throw }
-    'PASS negative control: missing Inspect label hit-testing was rejected by its behavioral assertion'
+    if (!$VerifyRegression -or $_.Exception.ToString() -notmatch $expectedFailure) { throw }
+    "PASS negative control: $RegressionCase was rejected by its behavioral assertion"
     return
 }
 'PASS UI touch: coordinates, scroll/slider arbitration, draggable dedup, Inspect labels/modal blocking, real gesture ownership and map/tool input'

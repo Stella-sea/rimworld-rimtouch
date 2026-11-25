@@ -424,12 +424,14 @@ namespace RimTouch
                 }
                 if (!TouchModeEnabled || TouchSource.Canceled)
                 {
+                    CancelMapTap("inputUnavailable");
                     if (TouchSource.Canceled || hadTouchLastFrame || mode != TouchMode.None)
                     {
                         AbortTouchInput();
                     }
                     return;
                 }
+                ValidateMapTap();
 
                 // Smooth return-to-north (dual-axis off): runs every frame,
                 // also after the finger lifts, until the view is aligned
@@ -544,6 +546,7 @@ namespace RimTouch
 
         private static void AbortTouchInput()
         {
+            CancelMapTap("canceled");
             RecordTouchLifecycle("abort");
             // Cancellation must not flow through FinishTouch or disappearance
             // finalization: those can select, order, or queue a UI tap.
@@ -594,6 +597,7 @@ namespace RimTouch
                 startTime = Time.realtimeSinceStartup;
                 lastWorldPanSampleTime = startTime;
                 gestureOwner = GetTouchOwner(gui);
+                BeginMapTap();
                 startedOverBlockingUi = IsBlockingWindowAt(gui);
                 uiTouchStartWindow = Find.WindowStack == null ? null : Find.WindowStack.GetWindowAt(gui);
                 uiTouchStartWindowPosition = uiTouchStartWindow == null ? Vector2.zero
@@ -834,6 +838,7 @@ namespace RimTouch
 
         private static void UpdateTwoFinger(ContactTouch a, ContactTouch b)
         {
+            CancelMapTap("multiTouch");
             Vector2 guiA = TouchToGui(a.position);
             Vector2 guiB = TouchToGui(b.position);
             Vector2 mid = (guiA + guiB) * 0.5f;
@@ -974,16 +979,7 @@ namespace RimTouch
                     float moveDistance = Vector2.Distance(releaseGui, startGui);
                     if (moveDistance <= DragSlopPixels && !rightClickDone && !suppressReleaseTap)
                     {
-                        if (IsWorldMapActive())
-                        {
-                            lastWorldTapTime = Time.realtimeSinceStartup;
-                            lastWorldTapGui = releaseGui;
-                            DoWorldLeftClick(releaseGui);
-                        }
-                        else if (!TryDoDraftedPawnTapCommand(releaseGui))
-                        {
-                            DoMapLeftClick(releaseGui);
-                        }
+                        ReleaseMapTap(releaseGui);
                     }
                 }
             }
@@ -1590,6 +1586,7 @@ namespace RimTouch
 
         private static void FinishTouch()
         {
+            if (!mapTap.Released) CancelMapTap("gestureFinished");
             ResetState();
             hadTouchLastFrame = false;
         }
