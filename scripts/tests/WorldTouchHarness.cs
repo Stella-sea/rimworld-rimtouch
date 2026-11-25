@@ -251,6 +251,9 @@ namespace RimTouch
         static bool TrySelectFromTwoFingerDraftedTap() => false;
         static bool TryDoDraftedPawnTapCommand(Vector2 p) => false;
         static void DoMapLeftClick(Vector2 p) { }
+        // UI dispatch arbitration has its own production-code suite in test-ui-touch.
+        static void CancelMapTap(string reason) { }
+        static void ReleaseMapTap(Vector2 p) { lastWorldTapTime = Time.realtimeSinceStartup; lastWorldTapGui = p; DoWorldLeftClick(p); }
         static void FinishTouch() { mode = TouchMode.None; worldPanAnchorValid = false; worldFreeStartedOnGlobe = false; worldFreeLimbCoasting = false; }
         static bool TryGetCameraRootPos(CameraDriver d, out Vector3 p) { p = Vector3.zero; return true; }
         static bool TryGetCameraRootSize(CameraDriver d, out float s) { s = 10; return true; }

@@ -37,6 +37,13 @@ settings text. Building alone does not install anything or start the game.
   `owner` identifies UI, local/world map, or local/world tool ownership; it is
   separate from the gesture `mode`. A normal release retains ownership for the
   existing native-input release guards; cancellation clears it.
+- `mapTapDecision`: `gesture`, independent `tap` sequence, physical `finger`,
+  local/world view, start/release GUI points and mouse-edge/release flags.
+  `released` reserves a map tap; `committed` is the only map submission.
+  `uiConsumed` or `uiControl` cancels it after the matching UI event/control.
+  `unpairedMouseUp` means no matching mouse-down was observed; it is not permission
+  to submit. Other actions explain gesture/context cancellation. A lifecycle
+  `owner=WorldMap` alone no longer proves that background selection was submitted.
 - `scrollDecision`: frame, gesture, event type and mouse position captured before
   processing; event type afterwards and `dragConsumed`; direction, start/current
   GUI and local positions; viewport/content rectangles; before/after scroll;
@@ -77,5 +84,10 @@ after unchecking. File captures are separated by session markers, not erased.
   coordinate helper with synthetic GUI/contact stubs. Regression cases cover
   scaled coordinate displacement, horizontal/edge rejection, vertical claim,
   late MouseDown, window ownership, slider jitter and repeated toggles.
+  It also compiles the real pending map-tap implementation and Entry/Play GUI
+  patches: UI-first submission, controls outside registered windows, independent
+  GUI/contact edge orderings, delayed paired mouse-up, cancellation, unrelated
+  UI activity, and mouse fallback. `-VerifyRegression` runs four independent
+  behavioral negative controls, including early map submission and missing claims.
 
 These do not run RimWorld/Harmony GUI dispatch, a native callback or a touchscreen.

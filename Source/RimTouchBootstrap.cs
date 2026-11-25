@@ -82,6 +82,7 @@ namespace RimTouch
             {
                 result = true;
             }
+            if (result) TouchInputDriver.NotifyUiTapHandled(rect);
         }
     }
 
@@ -146,6 +147,44 @@ namespace RimTouch
         {
             RimTouch.TouchPlatform.TouchInputProof.OnGuiHeartbeat();
             TouchInputDriver.OnGUI();
+        }
+    }
+
+    [HarmonyPatch(typeof(UIRoot_Entry), "UIRootOnGUI")]
+    public static class EntryTouchTapDispatchPatch
+    {
+        public static void Prefix(out TouchTapGuiState __state)
+        {
+            TouchInputDriver.BeginMapTapGui(out __state);
+        }
+
+        public static void Postfix(TouchTapGuiState __state)
+        {
+            TouchInputDriver.EndMapTapGui(__state);
+        }
+
+        public static void Finalizer(System.Exception __exception)
+        {
+            if (__exception != null) TouchInputDriver.CancelMapTapGui();
+        }
+    }
+
+    [HarmonyPatch(typeof(UIRoot_Play), "UIRootOnGUI")]
+    public static class PlayTouchTapDispatchPatch
+    {
+        public static void Prefix(out TouchTapGuiState __state)
+        {
+            TouchInputDriver.BeginMapTapGui(out __state);
+        }
+
+        public static void Postfix(TouchTapGuiState __state)
+        {
+            TouchInputDriver.EndMapTapGui(__state);
+        }
+
+        public static void Finalizer(System.Exception __exception)
+        {
+            if (__exception != null) TouchInputDriver.CancelMapTapGui();
         }
     }
 
@@ -303,6 +342,7 @@ namespace RimTouch
         {
             if (__result != Widgets.DraggableResult.Idle)
             {
+                TouchInputDriver.NotifyUiTapHandled(butRect);
                 TouchTapRepair.NotifyDraggableTriggered(butRect);
             }
         }
