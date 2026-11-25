@@ -72,8 +72,15 @@ new-issue form and list the useful report fields.
   screenshots and the link-check helper stayed in ignored `.build/` space.
 
 No source changes, game build, packaging, installation or game launch were
-needed for this documentation update. No commit, push, tag or publication was
-performed. Actual GitHub rendering of the new files remains a PR review check;
-the local preview cannot establish GitHub's final CSS, font choices or image
-caching behavior. Existing hardware acceptance is cited from the release, not
-repeated or expanded by this work.
+needed for this documentation update. After the local previews, the main session
+committed and pushed the documentation as `175d681` and opened PR #10 into `dev`.
+On the actual GitHub pages, the main session verified the English SVG, expanded
+settings table and reset instructions, then followed the Simplified Chinese
+language link and checked the Chinese SVG, headings, download links and
+installation text at **390 CSS pixels** mobile width. These checks passed after
+the SVG loaded; the earlier mobile capture taken before loading completed was
+not a rendering failure. Final screenshots are retained in ignored
+`.build/readme-preview/` as `github-readme-en-2026-11-25T09-19-25-295.jpg` and
+`github-readme-zh-mobile-loaded-2026-11-25T09-20-30-586.jpg`.
+Existing hardware acceptance is cited from the release, not repeated or expanded
+by this documentation work.
