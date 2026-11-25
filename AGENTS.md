@@ -32,6 +32,7 @@ pwsh -File ./Build17.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmo
 - `GameDir` 应直接包含 `Version.txt`、`Assembly-CSharp.dll` 及所需游戏 DLL；脚本要求版本号以 `1.7.` 开头。
 - 脚本选择已安装 SDK 中的 Roslyn，递归编译 `Source/` 下的 C# 文件，排除 `bin/` 和 `obj/`；程序集名称由 `Build.json` 决定。
 - 输出为 `.build/1.7/RimTouch.dll` 和 `.build/1.7/Build-Receipt.json`。收据记录依赖与源文件哈希、诊断和构建结果。
+- 本地测试只维护 `.build/local/RimTouch/` 这一份完整 Mod；`Build17.ps1` 每次编译成功后原地刷新 DLL、About、Languages 和许可说明，编译失败则保留上一份可用 Mod。用户直接复制替换此目录，不额外生成测试 ZIP、按任务命名的目录或旧版本备份；先前“保留五份”约定已取消。仅在明确发版任务中运行发布 ZIP 打包脚本。
 - 构建前至少需要 1.5 GB 可用空间。构建脚本不下载依赖、不启动游戏，也不改动已安装模组。
 - `Source/RimTouch.csproj` 是精简的旧式项目文件，不是本快照支持的构建入口；不要默认使用 `dotnet build` 或 `dotnet test`。
 - 游戏或 Harmony 路径未知时向用户确认，不猜测安装位置，也不提交个人机器路径或专有程序集。
@@ -72,6 +73,6 @@ pwsh -File ./Build17.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmo
 - **PR 与合并策略**：短分支合入 `dev` 采用 **Squash and merge** 保持线性整洁；`dev` 验收后同步至 `main` **必须采用 Create a merge commit**（严禁 Squash），保证 `dev` 与 `main` 共享提交历史与标签祖先关系。
 - **双层检查流水线**：
   - 每次提交/PR 须确保免游戏依赖检查全部通过：`scripts/check-repo-hygiene.ps1`、`scripts/check-csharp-syntax.ps1`、`scripts/test-input-proof.ps1`、`scripts/test-ui-touch.ps1`、`scripts/test-settings-layout.ps1`、`scripts/test-world-touch.ps1`（UI、设置布局和世界测试同时执行 `-VerifyRegression`，与 `.github/workflows/ci.yml` 一致）。
-  - 本机具备 RimWorld 1.7 与 Harmony 依赖时，依次执行 `Build17.ps1`、`scripts/test-harmony-patches.ps1`（核验全部 `[HarmonyPatch]` 目标与参数名绑定）及 `scripts/package-release.ps1`。
+  - 本机具备 RimWorld 1.7 与 Harmony 依赖时，依次执行 `Build17.ps1`、`scripts/test-harmony-patches.ps1`（核验全部 `[HarmonyPatch]` 目标与参数名绑定）；本地测试交付使用自动刷新的 `.build/local/RimTouch/`，仅明确发版时再执行 `scripts/package-release.ps1`。
 - **标签与发版**：预发布标签格式为附注标签 `v0.1.0-test.<N>`（与 `About/About.xml` `<modVersion>` 及 `CHANGELOG.md` 严格一致，由 `release-tag-check.yml` 校验并受 GitHub Ruleset 不可变保护）；正式版 `v0.1.0` 打在 `main` 上且须先移除中文 `About.xml` 的“测试版”标记。玩家日志（如 `TestReports/`）保持 Git 忽略，严禁入库。
 
