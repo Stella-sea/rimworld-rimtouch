@@ -50,7 +50,8 @@ RimWorld 1.7.4995 rev309，Waylith 渲染器；1920×1210 framebuffer、1280×80
    `ScreenToGUIPoint` 的差分转换触点相对位移，消去偏移。
 4. `WorldRendererUtility.WorldRenderedNow` 在 1.7 中已改为公有属性
    `WorldRendererUtility.WorldRendered`；`MainTabWindow_Inspect`、`WorldInspectPane`、
-   `MainTabWindow_Architect` 本身位于 `Find.WindowStack` 中，`GetWindowAt` 已精确覆盖。
+   `MainTabWindow_Architect` 本身位于 `Find.WindowStack` 中，`GetWindowAt` 覆盖其
+   `windowRect` 本体；它不代表窗口外附加控件均已覆盖，见后面的“地形标签穿透”调查。
 
 ## 本轮修复与架构收敛
 
@@ -280,3 +281,165 @@ RimWorld 1.7 与 Harmony 依赖后补跑（此前预收口版本的本地 DLL SH
 - RimTouch 设置页（页面顶部及下滚后各位置）：滑块纯横拖、拖出轨道上下 70+px 折返跨起点均顺滑无掉点且页面不抢滚；从滑块起手竖滚页面不改滑块值；
 - 含 `FloatRange`/`IntRange` 的列表页（如服饰/食物/清单策略）：竖滚不误改范围，横拖端点顺滑；
 - 调试窗（`DevGUI.HorizontalSlider`）及无滚动条页面滑块行为正常。
+
+## 世界地图“地形”标签穿透：只读根因调查（2026-11-24）
+
+### 用户现象与范围
+
+用户确认：世界地图选中地块后，点击左下信息面板上沿的“地形”标签，选点会变成
+按钮后方的世界地块；预期只操作标签并保留原选点。用户要求一并检查共用机制的
+隐含问题，优先统一输入归属，不为“地形”单独增加特例。本轮不修改运行源码。
+本次现场设备、缩放、窗口模式及已加载 DLL 身份尚未采集，不沿用其他问题的记录。
+
+### 已确认的源代码与游戏 IL 证据
+
+只读核验本机 `1.7.4995 rev309` 的 `Assembly-CSharp.dll`：
+
+- `WindowStack.GetWindowAt(Vector2)` 从上到下只检查各窗口的 `windowRect.Contains`，
+  不查询窗口 `ExtraOnGUI` 绘制出的附加交互区域。
+- `WorldInspectPane.SetInitialSizeAndPosition` 把窗口 y 设置为 `PaneTopY`；
+  `InspectPaneUtility.PaneSizeFor` 返回面板宽度和 165 高度。
+- `InspectPaneUtility.DoTabs` 把 `tabsTopY` 设为 `PaneTopY - 30`；
+  其共享局部方法 `<DoTabs>g__Do|18_0` 为可见、非 Hidden 标签绘制
+  `72 × 30` 的 `Widgets.ButtonText`。因此标签处于面板矩形上方。
+  本地 `MainTabWindow_Inspect` 与 `WorldInspectPane` 都从 `ExtraOnGUI`
+  调用同一个 `InspectPaneUtility.ExtraOnGUI -> DoTabs`，缺口覆盖两类面板的标签，
+  不取决于标签文字或 `WITab_Terrain` 的具体实现。
+- `InspectTabBase.DoTabGUI` 为打开的详情页登记独立 `ImmediateWindow`；
+  `WITab_Caravan_Feeding/Health/Needs/Social.ExtraOnGUI` 的侧页也登记独立窗口。
+  稳定登记时这些正文区域能由 `GetWindowAt` 命中，不能把它们全部记为漏判。
+  `ImmediateWindow` 的登记/更新/移除只发生在 Repaint；动态切页的帧间边界仍待验证。
+- `UIRoot_Play.UIRootOnGUI` 与 `UIRoot_Entry.UIRootOnGUI` 都先执行窗口栈 GUI，
+  再调用世界 `HandleLowPriorityInput`；原生设计允许 UI 先处理事件。
+  `UIRoot.UIRootOnGUI -> WindowStack.HandleEventsHighPriority` 还会通过
+  `GetsInput(null)` 阻止吸收窗口之外的鼠标输入。
+
+对照当前 RimTouch：
+
+- `UiHitTester.IsLikelyUiPosition` 使用 `GetWindowAt` 加若干 HUD 范围，
+  没有信息标签栏的实际交互矩形，也没有吸收窗口的全局输入规则。
+  `IsBlockingWindowAt` 同样只有窗口本体和场景检查。
+- `RootUpdatePatch.Prefix -> TouchInputDriver.Update` 在触点起手时保存
+  `startedOverUi = IsLikelyUiPosition(gui)`。漏判后，普通短点按释放进入
+  `CompleteActiveGesture -> DoWorldLeftClick`，直接射线取地块并调用
+  `WorldSelector.SelectFirstOrNextAt`。此路径不检查 GUI 事件是否已消费。
+  这是根因的第二部分：触控自行提交选点，绕开原生 UI 优先的派发次序。
+  即使后续按钮正确调用 `Event.Use()`，也无法撤销已提交的触控选择。
+- `WorldSelectorHandleWorldClicksPatch` / `SelectorHandleMapClicksPatch` 仅拦截
+  原版选择入口，不拦截上述直接调用，不能补救自定义路径中的 UI 漏判。
+
+### 隔离验证与同类问题
+
+本轮执行原有 `scripts/test-ui-touch.ps1`，通过；然后复用同进程测试替身，
+以反射调用实际 `Source/UiHitTester.cs` 编译出的两个私有命中方法，未改测试文件。
+采用说明用的 UI 高度 807、面板 `(0,607,432,165)`、Gizmo 高度 0：
+
+- 标签中心 `(396,592)`：本地/世界模式下均 `ui=false, blocking=false`；
+- 面板正文 `(396,630)`：两种模式均 `ui=true, blocking=true`；
+- 标签上方空白 `(396,550)`：两种模式均为 false，说明不能无界扩大面板范围。
+
+这些是源码隔离验证，坐标不是本次用户现场测量。原有测试只验证面板正文，
+没有标签栏用例，因此现有测试通过不能排除该缺口。
+
+已证实的共同覆盖缺口：
+
+- 本地和世界信息标签的起手漏判；同一缺口也进入双指窗口阻挡判断。
+- 模态/吸收窗口在自身矩形之外的输入阻挡规则未进入触控地图资格判断。
+  这是代码与原生语义的差异，现场是否出现背景选点或平移尚未实测。
+
+待验证，不能记为用户已遇到的故障：
+
+- Repaint 更新的 ImmediateWindow 在切页、关闭、尺寸变化时的登记时序；
+- 非窗口 HUD，如资源分类展开、动态高度的世界全局控件，与当前固定范围的差异；
+- 世界目标工具与触控选点的归属协调，及 Windows 提升鼠标事件的释放尾帧。
+
+### 修正方向与验收要求（尚未实施）
+
+最小的共用修正可覆盖两个 Inspect 面板的实际可见标签，而不按“地形”文本分支。
+用户要求的底层收敛还需统一 UI 命中与手势归属：复用原生窗口层级和吸收规则，
+从共用 UI 绘制/控件入口取得真实交互范围，覆盖窗口外标签和非窗口 HUD；
+保持局部/全局坐标、有效帧、所属窗口与视图的一致性。
+
+地图点按先保留为待提交意图，在 UI 完成派发、明确未被 UI/工具占用后提交一次。
+同一手势的 UI、地图、工具归属需要锁定，并由原版输入抑制、自定义选点、
+平移/长按/双指以及释放尾帧共同使用；仅延后调用或检查 `Event.Use()` 不足以
+解决拖动起手漏判。拖动期间不应因手指后来划过 UI 就重新夺取已有地图手势。
+布局缓存的失效与首次绘制需验证，不能用上一帧矩形宣称任意模组完全适配。
+
+后续验证应覆盖本地/世界全部可见标签、详情正文和侧页、标签边界空白、
+模态窗口外部、动态切页/关闭、单指长按和拖动、双指、快速连续点按、
+不同 UI 缩放以及纯鼠标。未启动游戏、安装或构建新 DLL，也未修改运行源码；
+根因有源码、IL 和隔离命中证据，尚无本次现场逐帧事件记录。
+
+## 信息标签与手势归属：授权后的共用修复
+
+用户接受收敛版 1＋2，并授权实施；第 3 点跨帧点按队列不在本轮实施。
+工作分支为 `fix/ui-touch-ownership`。
+
+### 实现范围
+
+- `IsBlockingWindowAt` 共用 `WindowStack.GetsInput(null)`、窗口本体和 Inspect
+  可见标签检查；`IsLikelyUiPosition` 复用该判断。标签按 1.7 原生的 72×30 布局、
+  `PaneWidthFor`、`PaneTopY` 以及 `IsVisible/Hidden` 实时计算，覆盖本地/世界面板及
+  多于六个标签的布局；不扩大整条空白区域，不记录全局控件矩形缓存。
+- 新增 `TouchOwner` 区分 UI、本地/世界地图及两类工具。`startedOverUi` 从归属派生，
+  单指更新、释放、原版选择抑制、窗口关闭资格不再按当前手指位置重算归属。
+  普通抬手保留归属供已有释放保护使用，取消时清空，下一次起手重新确定。
+  世界 UI 手势不再套用地图手势的 45 帧选择保护。
+- 单指起手清除遗留原版拖框；UI 触控期间抑制原版地图选择。升为双指时保留
+  窗口/滚动起手的阻挡，只对新增触点查询当前窗口命中；已有地图触点划过窗口
+  不会因此重新归属 UI，新第二指落在窗口上仍阻止地图操作。普通非窗口 HUD
+  保留原有双指入口。
+- UI 滚动接管同步更新同一个归属。原有单指/双指模式、滚动方向仲裁、惯性、
+  工具双指取消和坐标转换机制继续使用。
+- `WorldTargeter` 独立识别并通过原生处理器接收所属鼠标事件；普通地图触控不再
+  同时交给新激活的工具。新增补丁保留世界工具键盘取消。只读 IL 确认 `TilePicker`
+  本身绘制确认按钮并读取已选地块，不直接处理地图鼠标选点，因此不把
+  `TilePicker.Active` 当作整张世界地图交给工具的依据。
+- 生命周期诊断加入 `owner` 字段，沿用现有临时有界诊断入口。
+- `.gitignore` 增加 `*.lnk`，排除本机游戏目录快捷方式；未删除快捷方式。
+  共用规则写入 `AGENTS.md`。
+
+### 本轮实际验证
+
+- 免游戏依赖的卫生、C# 语法、诊断、UI、设置布局和世界数学/交互检查通过；
+  UI、设置和世界的负对照通过。UI 负对照去掉标签命中后，被标签中心行为断言拒绝，
+  已接入 CI。
+- UI 回归编译实际命中、单指处理、释放、输入抑制属性与世界工具补丁：
+  覆盖标签点按/长按/拖动、多标签与隐藏标签、窗口关闭/取消选择/尺寸变化、
+  模态窗口外部、本地/世界手势跨过 UI、Entry 界面世界工具、键盘取消、
+  关闭触控和无触控鼠标放行。世界回归编译实际双指方法，补测窗口/滚动归属继承、
+  已有地图触点划过窗口、新第二指落在窗口以及普通 HUD 双指入口。
+- `Build17.ps1` 对 `1.7.4995 rev309` 编译通过，0 诊断；
+  `test-harmony-patches.ps1` 验证 37/37 补丁目标及参数绑定；
+  `package-release.ps1` 验证当前源码、DLL 和构建收据一致并完成本地打包检查。
+- 本轮 DLL SHA256：
+  `0ACF259FE05F7BDEC61BAB2682E1BE81275A1DFCFE948DC98269D0F6AC360522`。
+  完整本地测试目录：`.build/ui-touch-ownership/local/RimTouch`，包含 DLL、
+  About、Languages 和许可说明。沿用 test.15 元数据，不代表新标签或已发布版本。
+
+### 真机待验收与边界
+
+尚未安装、启动游戏或进行触摸屏验证；未提交、推送或发布。
+优先复测原始“地形”点按保留选点，再检查本地其他信息标签、标签长按/拖动、
+双指与滚动/滑块继承、模态窗口外点击关闭而背景不响应、世界工具选目标、
+选择起始地块与确认、纯鼠标、失焦及主菜单清理。补记设备、窗口模式、
+UI/系统缩放和已加载 DLL 身份。
+
+此次使用原版 1.7 标签布局语义，未承诺改变布局的任意模组均适配；
+非窗口 HUD 的完整覆盖、动态 ImmediateWindow 时序和现场鼠标提升时序
+仍保留为待验证边界。若出现新的实际漏判，优先利用 `owner` 定向诊断，
+不凭“最多一帧”假定引入延后提交队列。
+
+## 用户实测反馈与固定测试目录（2026-11-25）
+
+用户确认已实测，“目前没有相关 bug”，据此关闭本次信息标签穿透/手势归属修复的
+验收待办。反馈没有逐项列出设备、窗口模式、缩放及完整回归矩阵，不扩展为任意
+模组或未列明场景均已验证。
+
+用户明确要求只保留一份完整本地测试 Mod，每次新编译动态更新，供其直接复制替换；
+无需另外创建 ZIP 或任务专属测试目录，也不再保留旧版本。固定目录为
+`.build/local/RimTouch/`。`Build17.ps1` 在编译成功后刷新完整目录，编译失败则
+保留上一次可用目录；`.build/1.7/` 继续保存原始 DLL 和构建收据。
+此前 `.build/ui-touch-ownership/local/RimTouch` 等目录和历史测试 ZIP 已被本轮
+清理取代；文档中的旧路径仅作为历史交付记录。项目规则与固定交付入口同步更新。

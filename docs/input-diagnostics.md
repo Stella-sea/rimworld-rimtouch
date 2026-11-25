@@ -34,6 +34,9 @@ settings text. Building alone does not install anything or start the game.
   bottom-left framebuffer pixels. Contact IDs distinguish physical contacts.
 - `touchLifecycle`: `begin`, `disappeared`, `abort`, and pre-cleanup `reset`.
   `reset` describes the state **before** clearing. `gesture` is a driver sequence.
+  `owner` identifies UI, local/world map, or local/world tool ownership; it is
+  separate from the gesture `mode`. A normal release retains ownership for the
+  existing native-input release guards; cancellation clears it.
 - `scrollDecision`: frame, gesture, event type and mouse position captured before
   processing; event type afterwards and `dragConsumed`; direction, start/current
   GUI and local positions; viewport/content rectangles; before/after scroll;

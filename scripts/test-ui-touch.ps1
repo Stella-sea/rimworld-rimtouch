@@ -1,3 +1,4 @@
+param([switch]$VerifyRegression)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 # Isolated policy tests compile the actual VelocityHistory, UiScroll, TouchTapRepair,
@@ -83,7 +84,7 @@ namespace UnityEngine {
   public static Vector2 GUIToScreenPoint(Vector2 p)=>offset + groupOffset + p*scale;
   public static int GetControlID(FocusType f, Rect r)=>((int)(r.x*10+groupOffset.x*10)<<16)^((int)(r.y*10+groupOffset.y*10));
  }
- public enum EventType {MouseDown,MouseUp,MouseDrag,Layout,Repaint,Used}
+  public enum EventType {MouseDown,MouseUp,MouseDrag,Layout,Repaint,Used,KeyDown}
  public class Event {public static Event current;public EventType type;public int button,clickCount;public Vector2 mousePosition;public bool isMouse=>type==EventType.MouseDown||type==EventType.MouseUp||type==EventType.MouseDrag;public void Use(){type=EventType.Used;}}
 }
 namespace Verse {
@@ -101,10 +102,16 @@ namespace Verse {
   public static int screenWidth=1280,screenHeight=807;
   public static UnityEngine.Vector3 UIToMapPosition(UnityEngine.Vector2 p)=>new UnityEngine.Vector3(p.x,0,p.y);
  }
- public class Window {public UnityEngine.Rect windowRect;}
+  public class InspectTabBase {public bool IsVisible=true, Hidden;}
+  public class Window {public UnityEngine.Rect windowRect;public bool absorbInputAroundWindow;}
  public class WindowStack {
   public Window currentlyDrawnWindow;
-  public readonly System.Collections.Generic.List<Window> windows = new System.Collections.Generic.List<Window>();
+   public readonly System.Collections.Generic.List<Window> windows = new System.Collections.Generic.List<Window>();
+   public System.Collections.Generic.IList<Window> Windows=>windows;
+   public bool GetsInput(Window window) {
+    for(int i=windows.Count-1;i>=0;i--) { if(windows[i]==window)return true;if(windows[i].absorbInputAroundWindow)return false; }
+    return true;
+   }
   public Window GetWindowAt(UnityEngine.Vector2 p) {
    for(int i=windows.Count-1;i>=0;i--) if(windows[i].windowRect.Contains(p)) return windows[i];
    return null;
@@ -223,10 +230,27 @@ namespace Verse {
   public static RimWorld.ColonistBar ColonistBar;
   public static LetterStack LetterStack=new LetterStack();
   public static DesignatorManager DesignatorManager=new DesignatorManager();
-  public static Targeter Targeter=new Targeter();
+   public static Targeter Targeter=new Targeter();
+   public static RimWorld.WorldTargeter WorldTargeter=new RimWorld.WorldTargeter();
  }
 }
 namespace RimWorld {
+  public interface IInspectPane {
+   bool AnythingSelected {get;} float PaneTopY {get;}
+   System.Collections.Generic.IEnumerable<Verse.InspectTabBase> CurTabs {get;}
+  }
+  public class InspectPane : Verse.Window, IInspectPane {
+   public bool AnythingSelected {get;set;}=true;public float PaneTopY=>windowRect.y;
+   public System.Collections.Generic.List<Verse.InspectTabBase> Tabs=new System.Collections.Generic.List<Verse.InspectTabBase>();
+   public System.Collections.Generic.IEnumerable<Verse.InspectTabBase> CurTabs=>Tabs;
+  }
+  public static class InspectPaneUtility {
+   public static float PaneWidthFor(IInspectPane pane) {
+    int count=0;foreach(var tab in pane.CurTabs)if(tab.IsVisible&&!tab.Hidden)count++;
+    return 72*System.Math.Max(6,count);
+   }
+  }
+  public class WorldTargeter {public bool IsTargeting;}
  public class AlertsReadout { public float AlertsHeight; }
  public class UIRoot_Play : Verse.UIRoot { public AlertsReadout alerts = new AlertsReadout(); }
  public class ColonistBar {
@@ -257,17 +281,46 @@ namespace RimTouch {
   public static bool TrySetField(System.Reflection.FieldInfo f,object o,object v){if(f==null)return false;f.SetValue(o,v);return true;}
   public static bool TryInvoke(System.Reflection.MethodInfo m,object o,object[] a){if(m==null)return false;m.Invoke(o,a);return true;}
  }
- public enum TouchMode {None,OneFinger,SelectionHold,MapPan,TwoFinger}
- public static partial class TouchInputDriver {
-  internal static bool TouchModeEnabled=true;static bool ignoreTouchesUntilAllReleased,uiScrollGestureActive,uiScrollInertiaActive,startedOverUi,suppressReleaseTap;
-  static bool twoFingerStartedWithVanillaMapTool, worldActive;
+  public static partial class TouchInputDriver {
+   internal static bool TouchModeEnabled=true;static bool ignoreTouchesUntilAllReleased,uiScrollGestureActive,uiScrollInertiaActive,suppressReleaseTap;
+   static TouchOwner gestureOwner;static bool startedOverUi=>gestureOwner==TouchOwner.Ui;
+   static bool startedOverBlockingUi;
+   static bool twoFingerStartedWithVanillaMapTool, worldActive;
+   static int lastTouchFrame=-1000,lastMultiTouchFrame=-1000;
+   static bool suppressVanillaMapUntilMouseMoves;
   static int suppressUiClickUntilFrame=-1000,suppressWindowCloseUntilFrame=-1000,suppressVanillaMapInputUntilFrame=-1000;
   static long primaryFingerId=1;static UnityEngine.Vector2 startGui,uiScrollLastGui,uiScrollVelocity;
   static UnityEngine.Rect uiScrollActiveRect,uiScrollInertiaRect;
   static float uiScrollInertiaStartTime,lastUiScrollInertiaTime,lastUiScrollSampleTime;
   static int lastUiScrollApplyFrame=-1000,lastUiScrollInertiaApplyFrame=-1000;
   const float MovementDetectionSlopPixels=6,DragSlopPixels=18,MinUiScrollInertiaSpeed=5,MinUiScrollInertiaStartSpeed=50,MaxUiScrollInertiaSpeed=2000,PanInertiaDamping=5;
-  static TouchMode mode;
+   static TouchMode mode;
+   static UnityEngine.Vector2 lastGui,lastWorldTapGui;
+   static UnityEngine.Vector3 startMap,panAnchorMap;
+   static Verse.Map gestureMap;
+   static bool gestureIsWorld,rightClickDone,selectPrimed,worldDoubleTapPrimed;
+   static float startTime,lastWorldPanSampleTime,lastWorldTapTime,lastSignificantMovementElapsed,panGestureDistance,lastPanSampleTime;
+   const float SelectHoldSeconds=.32f,RightClickHoldSeconds=.5f,RightClickHoldSlopPixels=22;
+   static int localClicks,worldClicks,rightClicks,uiTaps,worldUpdates,panUpdates;
+   static bool WorldPointDragEnabled()=>false;
+   static bool IsEnded(TouchPlatform.ContactTouch t)=>t.phase==TouchPlatform.ContactPhase.Ended;
+   static void RecordTouchLifecycle(string action){}
+   static void ClearInertiaSamples(){}
+   static void UpdateOneFingerWorld(TouchPlatform.ContactTouch t,UnityEngine.Vector2 p) { worldUpdates++;if(IsEnded(t))CompleteActiveGesture(p);else lastGui=p; }
+   static void DoMapRightClick(UnityEngine.Vector2 p){rightClicks++;}
+   static UnityEngine.Vector3 KeepMapPointUnderGui(UnityEngine.Vector3 p,UnityEngine.Vector2 g){panUpdates++;return new UnityEngine.Vector3();}
+   static void SamplePanVelocityFromMapDelta(UnityEngine.Vector3 d){}
+   static void BeginRimWorldDragBox(){}
+   static void FinishRimWorldDragBox(){}
+   static void FinishWorldDragBox(){}
+   static void FinalizeInertiaFromGesture(){}
+   static bool TryDoDraftedPawnTapCommand(UnityEngine.Vector2 p)=>false;
+   static bool TrySelectFromTwoFingerDraftedTap()=>false;
+   static void StopInertia(){}
+   static void DoMapLeftClick(UnityEngine.Vector2 p){localClicks++;}
+   static void DoWorldLeftClick(UnityEngine.Vector2 p){worldClicks++;}
+   static void QueueUiTap(UnityEngine.Vector2 p){uiTaps++;}
+   static void FinishTouch(){mode=TouchMode.None;uiScrollGestureActive=false;}
   static bool IsWorldMapActive()=>worldActive;
   static bool IsTwoFingerTapGesture()=>false;
   static void CancelRimWorldDragBox(){}static void CancelWorldDragBox(){}
@@ -277,7 +330,11 @@ namespace RimTouch {
   static void RecordScrollDecision(UnityEngine.Rect a,UnityEngine.Rect b,UnityEngine.Vector2 c,UnityEngine.Vector2 d,bool e,bool f,UnityEngine.Vector2 g,ScrollProofEvent i,bool j,ScrollDecision k){}
   static void RecordSliderArbitration(string a,UiSliderKind b,int c,UiControlDragAxis d,UnityEngine.Vector2 e,ScrollProofEvent f){}
   static void Assert(bool p,string m){if(!p)throw new System.Exception(m);}
-  static void Contact(float x,float y) {TouchPlatform.TouchSource.Count=1;TouchPlatform.TouchSource.touch=new TouchPlatform.ContactTouch {fingerId=1,phase=TouchPlatform.ContactPhase.Moved,position=new UnityEngine.Vector2(x*1.5f,1210-y*1210/807)};UnityEngine.Time.frameCount++;}
+   static void Contact(float x,float y) {TouchPlatform.TouchSource.Count=1;TouchPlatform.TouchSource.touch=new TouchPlatform.ContactTouch {fingerId=1,phase=TouchPlatform.ContactPhase.Moved,position=new UnityEngine.Vector2(x*1.5f,1210-y*1210/807)};UnityEngine.Time.frameCount++;}
+   static void Finger(float x,float y,TouchPlatform.ContactPhase phase) {
+    Contact(x,y);var touch=TouchPlatform.TouchSource.touch;touch.phase=phase;TouchPlatform.TouchSource.touch=touch;
+    lastTouchFrame=UnityEngine.Time.frameCount;UpdateOneFinger(touch);
+   }
   public static void RunTests() {
    var rect=new UnityEngine.Rect(0,40,864,584);var view=new UnityEngine.Rect(0,0,844,972);var scroll=new UnityEngine.Vector2(0,100);
    var w=new Verse.Window();Verse.Find.WindowStack.currentlyDrawnWindow=w;uiTouchStartWindow=w;
@@ -567,7 +624,99 @@ namespace RimTouch {
    Assert(IsLikelyUiPosition(new UnityEngine.Vector2(420, 30)),"colonist bar entry missed");
    // Two-finger window check only blocks on real windows, not HUD margins:
    Assert(IsBlockingWindowAt(new UnityEngine.Vector2(200, 700)),"blocking window missed");
-   Assert(!IsBlockingWindowAt(new UnityEngine.Vector2(420, 30)) && !IsBlockingWindowAt(new UnityEngine.Vector2(600, 790)),"HUD blocked two-finger zoom");
+    Assert(!IsBlockingWindowAt(new UnityEngine.Vector2(420, 30)) && !IsBlockingWindowAt(new UnityEngine.Vector2(600, 790)),"HUD blocked two-finger zoom");
+
+    // Shared Inspect labels live above their owner's windowRect, not inside it.
+    Verse.Find.WindowStack.windows.Clear();
+    Verse.GizmoGridDrawer.HeightDrawnRecently=0;
+    var pane=new RimWorld.InspectPane { windowRect=new UnityEngine.Rect(0,607,432,165) };
+    pane.Tabs.Add(new Verse.InspectTabBase { IsVisible=false });
+    pane.Tabs.Add(new Verse.InspectTabBase { Hidden=true });
+    pane.Tabs.Add(new Verse.InspectTabBase());
+    Verse.Find.WindowStack.windows.Add(pane);
+    foreach(bool world in new[]{false,true}) {
+     worldActive=world;
+     Assert(IsLikelyUiPosition(new UnityEngine.Vector2(396,592)) && IsBlockingWindowAt(new UnityEngine.Vector2(396,592)),"Inspect label above window missed");
+     Assert(!IsLikelyUiPosition(new UnityEngine.Vector2(200,592)),"blank Inspect label row blocked map");
+     Assert(!IsBlockingWindowAt(new UnityEngine.Vector2(396,576)),"blank map above label blocked");
+    }
+    pane.Tabs.Add(new Verse.InspectTabBase());
+    Assert(IsBlockingWindowAt(new UnityEngine.Vector2(324,592)),"second visible label missed");
+    pane.AnythingSelected=false;
+    Assert(!IsBlockingWindowAt(new UnityEngine.Vector2(396,592)),"deselected Inspect pane left ghost labels");
+    pane.AnythingSelected=true;
+    while(pane.Tabs.Count<9)pane.Tabs.Add(new Verse.InspectTabBase());
+    Assert(IsBlockingWindowAt(new UnityEngine.Vector2(468,592)),"wide Inspect label row missed");
+    foreach(int height in new[]{600,807,1000}) {
+     Verse.UI.screenHeight=height;pane.windowRect=new UnityEngine.Rect(0,height-200,504,165);
+     Assert(IsLikelyUiPosition(new UnityEngine.Vector2(468,height-215)),"resized Inspect label missed");
+    }
+    Verse.UI.screenHeight=807;pane.windowRect=new UnityEngine.Rect(0,607,432,165);
+    pane.Tabs.RemoveRange(3,pane.Tabs.Count-3);
+    Verse.Find.WindowStack.windows.Clear();
+    Assert(!IsBlockingWindowAt(new UnityEngine.Vector2(396,592)),"closed pane left ghost labels");
+
+    // Modal absorption applies outside windowRect, without inventing HUD margins.
+    var modal=new Verse.Window { windowRect=new UnityEngine.Rect(0,0,200,200),absorbInputAroundWindow=true };
+    Verse.Find.WindowStack.windows.Add(modal);
+    Assert(IsLikelyUiPosition(new UnityEngine.Vector2(800,400)) && IsBlockingWindowAt(new UnityEngine.Vector2(800,400)),"modal exterior did not block map");
+    mode=TouchMode.None;Finger(800,400,TouchPlatform.ContactPhase.Began);
+    Assert(startedOverUi,"modal exterior acquired map ownership");
+    Finger(800,400,TouchPlatform.ContactPhase.Ended);
+    Verse.Find.WindowStack.windows.Clear();
+    Assert(!IsBlockingWindowAt(new UnityEngine.Vector2(800,400)),"closed modal left a ghost blocker");
+    Verse.Find.WindowStack.windows.Add(pane);
+
+    // Drive real begin/update/release and real suppression getters.
+    UnityEngine.Event.current.type=UnityEngine.EventType.MouseDown;
+    foreach(bool world in new[]{false,true}) {
+     worldActive=world;mode=TouchMode.None;uiScrollGestureActive=false;
+     localClicks=worldClicks=rightClicks=uiTaps=worldUpdates=panUpdates=0;
+     Finger(396,592,TouchPlatform.ContactPhase.Began);
+     Assert(startedOverUi && startedOverBlockingUi,"label did not acquire UI ownership");
+     if(world) {
+      Assert(!WorldTargeterProcessInputEventsPatch.Prefix(),"UI-owned mouse event reached world targeter");
+      UnityEngine.Event.current.type=UnityEngine.EventType.KeyDown;
+      Assert(WorldTargeterProcessInputEventsPatch.Prefix(),"touch ownership blocked world targeting keyboard cancel");
+      UnityEngine.Event.current.type=UnityEngine.EventType.MouseDown;
+     }
+     Finger(396,592,TouchPlatform.ContactPhase.Ended);
+     Assert(uiTaps==1 && localClicks==0 && worldClicks==0,"label tap changed map selection");
+     TouchPlatform.TouchSource.Count=0;
+     Assert(!ShouldSuppressVanillaWorldInput,"UI release acquired world-map suppression tail");
+     Finger(396,592,TouchPlatform.ContactPhase.Began);
+     UnityEngine.Time.realtimeSinceStartup+=.6f;
+     Finger(396,592,TouchPlatform.ContactPhase.Stationary);
+     Finger(600,400,TouchPlatform.ContactPhase.Moved);
+     Assert(startedOverUi && worldUpdates==0 && panUpdates==0 && rightClicks==0,"label hold/drag operated map");
+     Finger(600,400,TouchPlatform.ContactPhase.Ended);
+     Assert(localClicks==0 && worldClicks==0,"label drag release selected map");
+
+     Finger(800,400,TouchPlatform.ContactPhase.Began);
+     Finger(396,592,TouchPlatform.ContactPhase.Moved);
+     Assert(!startedOverUi && (world?ShouldSuppressVanillaWorldInput:ShouldSuppressVanillaMapInput),"map touch stopped suppressing native selection over UI");
+     Assert(!world || ShouldSuppressVanillaWorldToolInput,"ordinary map touch reached world targeting");
+     Finger(396,592,TouchPlatform.ContactPhase.Ended);
+    }
+    worldActive=false;Verse.Find.DesignatorManager.SelectedDesignator=new Verse.Designator();
+    Finger(800,400,TouchPlatform.ContactPhase.Began);
+    Assert(gestureOwner==TouchOwner.LocalMapTool && mode==TouchMode.VanillaMapTool && !ShouldSuppressVanillaMapToolInput,"local tool lost input ownership");
+    int clicksBefore=localClicks+worldClicks;
+    Finger(800,400,TouchPlatform.ContactPhase.Ended);
+    Assert(localClicks+worldClicks==clicksBefore,"local tool tap also selected map");
+    Verse.Find.DesignatorManager.SelectedDesignator=null;
+    worldActive=true;Verse.Current.ProgramState=Verse.ProgramState.Entry;Verse.Find.UIRoot=new Verse.UIRoot();
+    Verse.Find.WorldTargeter.IsTargeting=true;
+    Finger(800,400,TouchPlatform.ContactPhase.Began);
+    Assert(gestureOwner==TouchOwner.WorldMapTool && !ShouldSuppressVanillaWorldToolInput && ShouldSuppressVanillaWorldInput,"entry-screen world tool ownership failed");
+    Finger(800,400,TouchPlatform.ContactPhase.Ended);
+    Assert(localClicks+worldClicks==clicksBefore,"world tool tap also selected map");
+    Verse.Find.WorldTargeter.IsTargeting=false;
+    TouchModeEnabled=false;
+    Assert(!ShouldSuppressVanillaMapInput && !ShouldSuppressVanillaWorldInput && !ShouldSuppressVanillaMapToolInput && !ShouldSuppressVanillaWorldToolInput,"disabled touch blocked native input");
+    TouchModeEnabled=true;TouchPlatform.TouchSource.Count=0;gestureOwner=TouchOwner.None;
+    lastTouchFrame=lastMultiTouchFrame=suppressVanillaMapInputUntilFrame=-1000;suppressVanillaMapUntilMouseMoves=false;
+    Assert(!ShouldSuppressVanillaMapInput && !ShouldSuppressVanillaWorldInput && !ShouldSuppressVanillaMapToolInput && !ShouldSuppressVanillaWorldToolInput,"idle mouse input blocked");
   }
  }
 }
@@ -576,11 +725,52 @@ $vel = [IO.File]::ReadAllText((Join-Path $root 'Source/Input/VelocityHistory.cs'
 $scroll = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchInputDriver.UiScroll.cs'))
 $tap = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchTapRepair.cs'))
 $hit = [IO.File]::ReadAllText((Join-Path $root 'Source/UiHitTester.cs'))
+if ($VerifyRegression) {
+    $correct = '|| IsInspectTabAt(stack, gui)'
+    if (!$hit.Contains($correct)) { throw 'Inspect label mutation point not found.' }
+    $hit = $hit.Replace($correct, '')
+}
 $boot = [IO.File]::ReadAllText((Join-Path $root 'Source/RimTouchBootstrap.cs'))
+$driver = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchInputDriver.cs'))
+function Get-DriverMember([string]$signature) {
+    $start = $driver.IndexOf($signature, [StringComparison]::Ordinal)
+    if ($start -lt 0) { throw "Missing production member: $signature" }
+    $open = $driver.IndexOf('{', $start)
+    $depth = 1
+    $end = $open + 1
+    while ($depth -gt 0 -and $end -lt $driver.Length) {
+        if ($driver[$end] -eq '{') { $depth++ }
+        if ($driver[$end] -eq '}') { $depth-- }
+        $end++
+    }
+    if ($depth -ne 0) { throw "Unbalanced member: $signature" }
+    $driver.Substring($start, $end - $start)
+}
+$ownership = @(
+    (Get-DriverMember 'public static bool ShouldSuppressVanillaMapInput'),
+    (Get-DriverMember 'public static bool ShouldSuppressVanillaWorldInput'),
+    (Get-DriverMember 'public static bool ShouldSuppressVanillaMapToolInput'),
+    (Get-DriverMember 'public static bool ShouldSuppressVanillaWorldToolInput'),
+    (Get-DriverMember 'public static bool ShouldSuppressAfterMultiTouch'),
+    (Get-DriverMember 'private static void UpdateOneFinger('),
+    (Get-DriverMember 'private static void CompleteActiveGesture(')
+) -join "`n"
+$ownership = "namespace RimTouch { public static partial class TouchInputDriver { $ownership } }"
+$modes = [IO.File]::ReadAllText((Join-Path $root 'Source/TouchMode.cs'))
 $bFrom = $boot.IndexOf('    [HarmonyPatch(typeof(Widgets), "ButtonInvisibleDraggable"')
 $bTo = $boot.IndexOf('    [HarmonyPatch(typeof(Widgets), "BeginScrollView"', $bFrom)
 $draggablePatch = 'namespace RimTouch {' + $boot.Substring($bFrom, $bTo - $bFrom) + '}'
-$body = ($vel + "`n" + $scroll + "`n" + $tap + "`n" + $hit + "`n" + $draggablePatch) -replace '(?m)^using [^;]+;\r?\n',''
+$wFrom = $boot.IndexOf('    [HarmonyPatch(typeof(WorldTargeter)')
+$wTo = $boot.IndexOf('    [HarmonyPatch(', $wFrom + 5)
+$worldToolPatch = 'namespace RimTouch {' + $boot.Substring($wFrom, $wTo - $wFrom) + '}'
+$body = ($modes + "`n" + $vel + "`n" + $scroll + "`n" + $tap + "`n" + $hit + "`n" + $ownership + "`n" + $draggablePatch + "`n" + $worldToolPatch) -replace '(?m)^using [^;]+;\r?\n',''
 Add-Type -WarningAction SilentlyContinue -CompilerOptions '/nowarn:0169,0649,0414' -TypeDefinition ("using System; using System.Collections.Generic; using System.Reflection; using HarmonyLib; using RimWorld; using RimWorld.Planet; using UnityEngine; using Verse; using RimTouch.TouchPlatform;`n" + $stubs + $body)
-[RimTouch.TouchInputDriver]::RunTests()
-'PASS UI touch: scaled coordinates, scroll claim/rejection, nested ScrollView priority & boundary handoff, slider-scroll arbitration & locking (HorizontalSlider/FloatRange/IntRange/GUI sliders), ButtonInvisibleDraggable 4-pass dedup & drag-painting, accurate HUD & two-finger window hit-testing'
+try {
+    [RimTouch.TouchInputDriver]::RunTests()
+    if ($VerifyRegression) { throw 'Inspect label regression mutation unexpectedly passed.' }
+} catch {
+    if (!$VerifyRegression -or $_.Exception.ToString() -notmatch 'Inspect label above window missed') { throw }
+    'PASS negative control: missing Inspect label hit-testing was rejected by its behavioral assertion'
+    return
+}
+'PASS UI touch: coordinates, scroll/slider arbitration, draggable dedup, Inspect labels/modal blocking, real gesture ownership and map/tool input'

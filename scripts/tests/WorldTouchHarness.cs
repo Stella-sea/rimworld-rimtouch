@@ -234,10 +234,10 @@ namespace RimTouch
             WorldCameraLayerOriginOffsetField = Field("layerOriginOffset"), WorldCameraCachedCameraField = Field("cachedCamera");
         static readonly MethodInfo WorldCameraApplyPositionMethod = typeof(WorldCameraDriver).GetMethod("ApplyPositionToGameObject");
         static bool TouchModeEnabled = true, ShouldSuppressWorldEdgeScroll;
-        static bool blockingWindow;
+        static bool blockingWindow, blockingLeft;
         static int queuedUiTaps, worldBoxes;
         static bool IsEnded(ContactTouch t) => t.phase == ContactPhase.Ended;
-        static bool IsBlockingWindowAt(Vector2 p) => blockingWindow;
+        static bool IsBlockingWindowAt(Vector2 p) => blockingWindow || (blockingLeft && p.x < 500);
         static bool IsVanillaMapToolActive() => false;
         static void SuppressUiClickFallout() { }
         static void CancelRimWorldDragBox() { }
@@ -279,19 +279,20 @@ namespace RimTouch
             Screen.width = UI.screenWidth = 1600; Screen.height = UI.screenHeight = 900;
             StopInertia(); ClearInertiaSamples(); CancelNorthReturn();
             mode = TouchMode.None; worldPanAnchorValid = false; worldFreeStartedOnGlobe = false; worldFreeLimbCoasting = false; uiScrollGestureActive = false;
-            startedOverUi = suppressReleaseTap = rightClickDone = worldDoubleTapPrimed = blockingWindow = false;
+            gestureOwner = TouchOwner.WorldMap;
+            startedOverBlockingUi = suppressReleaseTap = rightClickDone = worldDoubleTapPrimed = blockingWindow = blockingLeft = false;
             queuedUiTaps = worldBoxes = 0;
             d.ApplyPositionToGameObject();
             return d;
         }
-        static ContactTouch Contact(Vector2 gui, ContactPhase phase = ContactPhase.Moved)
+        static ContactTouch Contact(Vector2 gui, ContactPhase phase = ContactPhase.Moved, long finger = 1)
         {
-            return new ContactTouch { fingerId = 1, phase = phase,
+            return new ContactTouch { fingerId = finger, phase = phase,
                 position = new Vector2(gui.x * Screen.width / UI.screenWidth, (UI.screenHeight - gui.y) * Screen.height / UI.screenHeight) };
         }
         static void Begin(Vector2 p)
         {
-            mode = TouchMode.OneFinger; startGui = lastGui = p; startTime = Time.realtimeSinceStartup;
+            mode = TouchMode.OneFinger; primaryFingerId = 1; startGui = lastGui = p; startTime = Time.realtimeSinceStartup;
             panGestureDistance = 0; worldPanAnchorValid = false; worldFreeStartedOnGlobe = false; worldFreeLimbCoasting = false; suppressReleaseTap = false;
         }
 
@@ -441,7 +442,7 @@ namespace RimTouch
             driver = Setup(); Begin(new Vector2(800, 450));
             UpdateOneFingerWorld(Contact(startGui, ContactPhase.Ended), startGui);
             Assert(Find.WorldSelector.Selects == 1 && Find.WorldSelector.Clears == 0, "globe tap no longer selects");
-            driver = Setup(); Begin(outside); startedOverUi = true;
+            driver = Setup(); Begin(outside); gestureOwner = TouchOwner.Ui;
             CompleteActiveGesture(outside);
             Assert(queuedUiTaps == 1 && Find.WorldSelector.Clears == 0 && driver.Applies == 1, "UI tap leaked to world selection");
             driver = Setup(); Begin(outside); worldDoubleTapPrimed = true;
@@ -457,6 +458,23 @@ namespace RimTouch
             driver = Setup(); blockingWindow = true;
             UpdateTwoFinger(Contact(new Vector2(400, 400)), Contact(new Vector2(600, 400)));
             Assert(startedOverUi && driver.Applies == 1, "two fingers on a window moved globe");
+            driver = Setup(); Begin(new Vector2(400,400));
+            gestureOwner = TouchOwner.Ui; startedOverBlockingUi = true;
+            UpdateTwoFinger(Contact(new Vector2(500,300)), Contact(new Vector2(700,300)));
+            Assert(startedOverUi && mode != TouchMode.TwoFinger && driver.Applies == 1, "second finger stole UI ownership after leaving window");
+            driver = Setup(); Begin(new Vector2(400,400));
+            gestureOwner = TouchOwner.Ui; uiScrollGestureActive = true;
+            UpdateTwoFinger(Contact(new Vector2(500,300)), Contact(new Vector2(700,300)));
+            Assert(startedOverUi && driver.Applies == 1, "second finger stole active scroll ownership");
+            driver = Setup(); Begin(new Vector2(400,400)); gestureOwner = TouchOwner.Ui;
+            UpdateTwoFinger(Contact(new Vector2(400,400)), Contact(new Vector2(600,400)));
+            Assert(mode == TouchMode.TwoFinger && gestureOwner == TouchOwner.WorldMap, "nonblocking HUD swallowed two-finger map gesture");
+            driver = Setup(); Begin(new Vector2(800,400)); blockingLeft = true;
+            UpdateTwoFinger(Contact(new Vector2(400,400)), Contact(new Vector2(700,400), finger:2));
+            Assert(mode == TouchMode.TwoFinger && !startedOverUi, "map contact crossing UI lost ownership on second finger");
+            driver = Setup(); Begin(new Vector2(800,400)); blockingLeft = true;
+            UpdateTwoFinger(Contact(new Vector2(800,400)), Contact(new Vector2(400,400), finger:2));
+            Assert(startedOverUi && mode != TouchMode.TwoFinger, "new second contact on a window moved map");
             driver = Setup(180, 45, 37);
             UpdateTwoFinger(Contact(new Vector2(400, 400)), Contact(new Vector2(600, 400)));
             Time.realtimeSinceStartup += .02f;

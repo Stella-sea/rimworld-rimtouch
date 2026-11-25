@@ -45,7 +45,11 @@ jobs:
 
       - name: UI touch, scroll, draggable dedup, and HUD regression suite
         shell: pwsh
-        run: ./scripts/test-ui-touch.ps1
+        run: |
+          & pwsh -NoProfile -File ./scripts/test-ui-touch.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & pwsh -NoProfile -File ./scripts/test-ui-touch.ps1 -VerifyRegression
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Settings single-column layout regression suite
         shell: pwsh

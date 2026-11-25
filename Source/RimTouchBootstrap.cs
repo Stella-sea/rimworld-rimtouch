@@ -185,6 +185,16 @@ namespace RimTouch
         }
     }
 
+    [HarmonyPatch(typeof(WorldTargeter), "ProcessInputEvents")]
+    public static class WorldTargeterProcessInputEventsPatch
+    {
+        public static bool Prefix()
+        {
+            Event current = Event.current;
+            return current == null || !current.isMouse || !TouchInputDriver.ShouldSuppressVanillaWorldToolInput;
+        }
+    }
+
     [HarmonyPatch(typeof(WorldSelector), "HandleWorldClicks")]
     public static class WorldSelectorHandleWorldClicksPatch
     {

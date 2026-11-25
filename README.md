@@ -28,7 +28,7 @@ Use PowerShell 7 and an installed .NET SDK. Supply your licensed game and matchi
 ./Build17.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmony.dll'
 ```
 
-The portable helper compiles only Source/ into .build/1.7, without downloading dependencies, starting a game, copying a runtime or changing installed mods. Archived IDE project files may retain legacy references; the 1.7 helper is the supported build path for this snapshot. Legacy source, where included, is separate and has not been newly tested. Assets have separate terms in ASSETS.md.
+The portable helper compiles Source/ into .build/1.7 and refreshes one complete local test mod at `.build/local/RimTouch/` (DLL, About, Languages, and license files). Copy that folder to test; each successful build replaces its contents, while a failed compilation leaves the previous test mod intact. Local testing does not generate ZIPs or versioned test folders. The helper does not download dependencies, start the game, copy a runtime or change installed mods. Archived IDE project files may retain legacy references; the 1.7 helper is the supported build path for this snapshot. Legacy source, where included, is separate and has not been newly tested. Assets have separate terms in ASSETS.md.
 
 ## Optional input diagnostics
 
