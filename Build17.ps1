@@ -57,7 +57,7 @@ Copy-Item -LiteralPath $product -Destination (Join-Path $localMod 'Assemblies')
 foreach ($folder in @('About', 'Languages')) {
     Copy-Item -LiteralPath (Join-Path $root $folder) -Destination $localMod -Recurse
 }
-foreach ($file in @('LICENSE', 'ASSETS.md')) {
+foreach ($file in @('LICENSE', 'ASSETS.md', 'CREDITS.md')) {
     Copy-Item -LiteralPath (Join-Path $root $file) -Destination $localMod
 }
 Write-Output ('Compiled '+$spec.assemblyName+' into .build/1.7 and refreshed .build/local/RimTouch. No game launched or installed files changed.')

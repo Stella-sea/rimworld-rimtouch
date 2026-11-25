@@ -76,5 +76,5 @@ pwsh -File ./Build17.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmo
 - **双层检查流水线**：
   - 每次提交/PR 须确保免游戏依赖检查全部通过：`scripts/check-repo-hygiene.ps1`、`scripts/check-csharp-syntax.ps1`、`scripts/test-input-proof.ps1`、`scripts/test-ui-touch.ps1`、`scripts/test-settings-layout.ps1`、`scripts/test-world-touch.ps1`（UI、设置布局和世界测试同时执行 `-VerifyRegression`，与 `.github/workflows/ci.yml` 一致）。
   - 本机具备 RimWorld 1.7 与 Harmony 依赖时，依次执行 `Build17.ps1`、`scripts/test-harmony-patches.ps1`（核验全部 `[HarmonyPatch]` 目标与参数名绑定）；本地测试交付使用自动刷新的 `.build/local/RimTouch/`，仅明确发版时再执行 `scripts/package-release.ps1`。
-- **标签与发版**：预发布标签格式为附注标签 `v0.1.0-test.<N>`（与 `About/About.xml` `<modVersion>` 及 `CHANGELOG.md` 严格一致，由 `release-tag-check.yml` 校验并受 GitHub Ruleset 不可变保护）；正式版 `v0.1.0` 打在 `main` 上且须先移除中文 `About.xml` 的“测试版”标记。玩家日志（如 `TestReports/`）保持 Git 忽略，严禁入库。
+- **标签与发版**：预发布附注标签 `v<MAJOR>.<MINOR>.<PATCH>-test.<N>` 打在 `dev`；正式版附注标签 `v<MAJOR>.<MINOR>.<PATCH>` 打在 `main`。版本须与 `About/About.xml` `<modVersion>` 及 `CHANGELOG.md` 严格一致，由 `release-tag-check.yml` 校验并受 GitHub Ruleset 不可变保护。正式版先移除中英文显示文案中的测试版/Candidate/Private/实机验收中标记，保留包 ID 的历史后缀；包内必须包含 `LICENSE`、`ASSETS.md`、`CREDITS.md`。玩家日志（如 `TestReports/`）保持 Git 忽略，严禁入库。
 
