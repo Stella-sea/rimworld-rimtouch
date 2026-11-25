@@ -9,6 +9,16 @@ suffix is a stable release.
 
 ## [Unreleased]
 
+- General control ownership for drag, hold and multitouch remains follow-up work.
+
+## [0.2.0] — 2026-11-25
+
+Stable release for Windows and RimWorld 1.7, incorporating the accepted fixes
+since `0.1.0-test.15`. Settings keys, defaults and settings save version (`9`)
+are unchanged.
+
+### Fixed
+
 - Rebuilt dual-axis world orbit around RimWorld's moving-camera model.
   Single-finger drags, two-finger midpoint movement, and inertia share a
   screen-relative turntable that preserves the current roll and limits pitch
@@ -16,10 +26,54 @@ suffix is a stable release.
   clear selection, and dragging back to the start does not become a tap.
 - Corrected free-anchor rotation multiplication, stopped native rotation
   animations during direct touch rotation, and kept dual-axis twist as pure
-  view roll. The native north-up control remains available.
-- Added isolated world-camera/gesture regression tests and three behavioral
-  negative controls to CI. Hardware acceptance is pending; settings keys,
-  defaults, and release version are unchanged.
+  view roll. Smoothed free-mode limb damping, slip-off coast, re-anchoring and
+  inertia; twist release no longer starts unintended pan inertia. The native
+  north-up control remains available.
+- Locked slider/scroll arbitration for the duration of each gesture so natural
+  finger drift no longer causes intermittent slider drops or value jumps.
+  Range and GUI sliders preserve values while scrolling claims the gesture.
+- Unified UI/map/tool gesture ownership, recognized shared Inspect tabs outside
+  window bounds, respected modal input blocking, and handled world tools
+  separately from local-map tools.
+- Deferred local/world map taps until matching UI dispatch and physical release
+  complete. UI-handled taps no longer also select the background, including
+  random landing-site selection. Matching uses gesture/contact identity and
+  mouse edges, with no page-specific button list or fixed one-frame timeout.
+
+### Release delivery
+
+- Removed candidate/test wording from English and Simplified Chinese display
+  metadata while retaining package identity, authors and Harmony dependency.
+- Release archives and the single local Mod now include `LICENSE`, `ASSETS.md`
+  and `CREDITS.md`. PowerShell is the supported packaging entry point; the shell
+  script remains a legacy prerelease helper.
+- Tag checks now include the UI negative controls and the world regression suite.
+
+### Verification and compatibility
+
+- Users accepted the affected world-camera, slider, UI ownership and map-tap
+  fixes during hardware testing. The final feedback reported the involved
+  interactions fixed with no obvious bugs; it did not enumerate every device,
+  display scale, window mode or mod combination.
+- Release preparation on `2026-11-25`: repository hygiene and 38/38 localization
+  key parity, Roslyn parsing of 20 production sources, diagnostics routing/bounds,
+  UI/settings/world regression suites and their behavioral negative controls
+  passed. The four UI and three world negative controls plus the settings
+  negative control were rejected by their expected assertions.
+- `Build17.ps1` compiled against RimWorld `1.7.4995 rev309` and Harmony `3.0.0.0`
+  with 0 diagnostics; 39/39 Harmony target/parameter binding audits passed.
+  Current source hashes, build receipt, canonical local Mod and all 10 archive
+  entries were verified. Runtime source is unchanged from the accepted fix;
+  the release preparation did not launch the game or repeat hardware testing.
+- `RimTouch.dll` SHA256:
+  `9078e6cf2e2ff9aef5416af175e7b24400a3b860201d13d8229fabebc9538545`.
+- `RimTouch-v0.2.0.zip` SHA256:
+  `cee21c9d982b15fa16f6829b48bfc5628d0db04e4ee7875c3b2b78f1dd31a720`.
+- Completely custom UI that neither consumes events nor reports operations
+  through the existing standard controls remains a compatibility boundary.
+  General drag/hold/multitouch control acquisition is separate follow-up work.
+  Linux and arbitrary mod combinations are not certified. GitHub publication
+  does not update Steam Workshop.
 
 ## [0.1.0-test.15] — 2026-11-24
 

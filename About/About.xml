@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ModMetaData>
-  <name>RimTouch – Windows 1.7 Candidate</name>
+  <name>RimTouch – Windows 1.7</name>
   <author>Tatsuki Tanaka; Windows continuation by Sweet Briana and Cinder</author>
   <packageId>cinder.rimtouch17.private</packageId>
   <supportedVersions><li>1.7</li></supportedVersions>
   <modDependencies><li><packageId>brrainz.harmony</packageId><displayName>Harmony</displayName><steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl></li></modDependencies>
   <loadAfter><li>ray1203.simplecamerasetting</li></loadAfter>
-  <description>Private Windows 1.7 continuation candidate. Physical acceptance remains in progress. Enable Harmony separately and only one RimTouch implementation. GPL-3.0-or-later; original author and corresponding source retained.</description>
-  <modVersion>0.1.0-test.15</modVersion>
+  <description>Windows touch continuation for RimWorld 1.7. Provides touch selection, UI scrolling, pinch zoom, panning and world-map controls. Enable Harmony separately and only one RimTouch implementation. GPL-3.0-or-later; original author and corresponding source retained. Source: https://github.com/Stella-sea/rimworld-rimtouch</description>
+  <modVersion>0.2.0</modVersion>
 </ModMetaData>

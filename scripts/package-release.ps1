@@ -24,12 +24,15 @@ if (@($meta.supportedVersions.li) -notcontains '1.7') {
     throw 'About/About.xml <supportedVersions> is missing 1.7.'
 }
 
-# Stable releases must not retain test-only Chinese About marker
+# Stable display metadata must not retain candidate/test wording; keep packageId.
+if (-not $isPrerelease -and "$($meta.name) $($meta.description)" -match '(?i)\b(candidate|private)\b|acceptance remains in progress') {
+    throw 'Stable release blocked: English name/description still contains candidate/private acceptance wording.'
+}
 $zhAboutPath = Join-Path $root 'Languages/ChineseSimplified/About/About.xml'
 if (-not $isPrerelease -and (Test-Path -LiteralPath $zhAboutPath)) {
     $zhAboutText = Get-Content -LiteralPath $zhAboutPath -Raw
-    if ($zhAboutText -match '测试版') {
-        throw 'Stable release blocked: Languages/ChineseSimplified/About/About.xml still contains test-only marker "测试版".'
+    if ($zhAboutText -match '测试版|候选版|实机验收中') {
+        throw 'Stable release blocked: Chinese About still contains test/candidate acceptance wording.'
     }
 }
 
@@ -72,6 +75,12 @@ foreach ($cs in $currentSources) {
 }
 
 # 3. Create clean release zip with forward-slash RimTouch/ root entries
+$notices = @('LICENSE', 'ASSETS.md', 'CREDITS.md')
+foreach ($notice in $notices) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root $notice) -PathType Leaf)) {
+        throw "Missing release notice: $notice"
+    }
+}
 [void][IO.Directory]::CreateDirectory($OutputDir)
 $zipName = if ($isPrerelease) { "RimTouch-fix-test$testNumber.zip" } else { "RimTouch-v$Version.zip" }
 $zipPath = Join-Path (Resolve-Path -LiteralPath $OutputDir).Path $zipName
@@ -97,6 +106,10 @@ try {
         }
         [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $dllPath, 'RimTouch/Assemblies/RimTouch.dll', [IO.Compression.CompressionLevel]::Optimal)
         $entriesAdded++
+        foreach ($notice in $notices) {
+            [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, (Join-Path $root $notice), "RimTouch/$notice", [IO.Compression.CompressionLevel]::Optimal)
+            $entriesAdded++
+        }
     } finally {
         $zip.Dispose()
     }

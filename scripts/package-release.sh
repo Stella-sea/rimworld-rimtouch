@@ -1,5 +1,6 @@
 #!/bin/bash
-# Package a tested RimTouch build as a versioned GitHub Release asset.
+# Legacy prerelease-only packager; does not include the full release notices.
+# Use package-release.ps1 for supported prerelease and stable packaging.
 # Usage: scripts/package-release.sh <version> [staging-dir]
 #   version: e.g. 0.1.0-test.12  (no leading "v"; the tag is v<version>)
 #   staging-dir: a directory holding About/, Assemblies/RimTouch.dll
