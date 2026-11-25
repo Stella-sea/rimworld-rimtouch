@@ -77,10 +77,30 @@ namespace RimTouch
                 {
                     kind = "touchLifecycle", session = TouchInputProof.SessionId, utc = DateTime.UtcNow, frame = Time.frameCount,
                     gesture = proofGesture, action, finger = primaryFingerId, mode = mode.ToString(),
+                    owner = gestureOwner.ToString(),
                     touchCount = TouchSource.Count, canceled = TouchSource.Canceled,
                     start = ProofPoint(startGui), last = ProofPoint(lastGui), startedOverUi,
                     scrollActive = uiScrollGestureActive, scrollRect = ProofRect(uiScrollActiveRect),
                     inertiaActive = uiScrollInertiaActive, dropoutFrames = 0
+                });
+            }
+            catch (Exception ex)
+            {
+                TouchInputProof.StopDiagnostics(ex);
+            }
+        }
+
+        private static void RecordMapTapDecision(string action)
+        {
+            if (!TouchInputProof.IsRecording) return;
+            try
+            {
+                TouchInputProof.RecordDiagnostic(new
+                {
+                    kind = "mapTapDecision", frame = Time.frameCount, gesture = proofGesture,
+                    tap = mapTap.Sequence, finger = mapTap.Finger, action, world = mapTap.IsWorld,
+                    start = ProofPoint(mapTap.Start), release = ProofPoint(mapTap.Release),
+                    released = mapTap.Released, mouseDown = mapTap.MouseDown, mouseUp = mapTap.MouseUp
                 });
             }
             catch (Exception ex)
@@ -182,7 +202,37 @@ namespace RimTouch
                 case ScrollDecision.OtherWindow: return "otherWindow";
                 case ScrollDecision.Claimed: return "claimed";
                 case ScrollDecision.Outside: return "outside";
+                case ScrollDecision.ControlLocked: return "controlLocked";
                 default: return "belowSlop";
+            }
+        }
+
+        private static void RecordSliderArbitration(string action, UiSliderKind kind, int controlId,
+            UiControlDragAxis axis, Vector2 dragFromStart, ScrollProofEvent inputEvent)
+        {
+            if (!TouchInputProof.IsRecording) return;
+            try
+            {
+                EnsureProofSession();
+                Event current = Event.current;
+                Window window = Find.WindowStack == null ? null : Find.WindowStack.currentlyDrawnWindow;
+                TouchInputProof.RecordDiagnostic(new
+                {
+                    kind = "sliderArbitration", frame = Time.frameCount,
+                    gesture = proofGesture, action, sliderKind = kind.ToString(),
+                    controlId, axis = axis.ToString(),
+                    eventType = inputEvent.Type < 0 ? "none" : ((EventType)inputEvent.Type).ToString(),
+                    eventTypeAfter = current == null ? "none" : current.type.ToString(),
+                    eventMouse = ProofPoint(inputEvent.MousePosition),
+                    dragFromStart = ProofPoint(dragFromStart),
+                    scrollActive = uiScrollGestureActive,
+                    windowType = window == null ? null : window.GetType().FullName,
+                    windowId = window == null ? 0 : RuntimeHelpers.GetHashCode(window)
+                });
+            }
+            catch (Exception ex)
+            {
+                TouchInputProof.StopDiagnostics(ex);
             }
         }
     }

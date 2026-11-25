@@ -48,4 +48,16 @@ if ($exitCode -eq 0) { $receipt['productSHA256']=(Get-FileHash -LiteralPath $pro
 [IO.File]::WriteAllText((Join-Path $output 'Build-Receipt.json'),($receipt | ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
 $messages | ForEach-Object { $_.Replace($root,'REPOSITORY').Replace($game,'GAME') }
 if ($exitCode -ne 0) { throw "Compilation failed with exit code $exitCode" }
-Write-Output ('Compiled '+$spec.assemblyName+' into .build/1.7. No game launched or installed files changed.')
+# Refresh the single generated test mod only after compilation succeeds.
+$localMod = Join-Path $root '.build/local/RimTouch'
+[void][IO.Directory]::CreateDirectory($localMod)
+Get-ChildItem -LiteralPath $localMod -Force | Remove-Item -Recurse -Force
+[void][IO.Directory]::CreateDirectory((Join-Path $localMod 'Assemblies'))
+Copy-Item -LiteralPath $product -Destination (Join-Path $localMod 'Assemblies')
+foreach ($folder in @('About', 'Languages')) {
+    Copy-Item -LiteralPath (Join-Path $root $folder) -Destination $localMod -Recurse
+}
+foreach ($file in @('LICENSE', 'ASSETS.md', 'CREDITS.md')) {
+    Copy-Item -LiteralPath (Join-Path $root $file) -Destination $localMod
+}
+Write-Output ('Compiled '+$spec.assemblyName+' into .build/1.7 and refreshed .build/local/RimTouch. No game launched or installed files changed.')

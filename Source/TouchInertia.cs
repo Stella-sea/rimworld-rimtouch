@@ -187,11 +187,12 @@ namespace RimTouch
                 {
                     Vector2 inertiaGuiDelta = worldPanVelocity * PanInertiaStrength * WorldPanInertiaStrengthScale * GetWorldPanInertiaMoveScale(driver) * dt;
                     worldInertiaGui += inertiaGuiDelta;
-                    // The inertia continues the drag, so it uses the same rotation
-                    // as the drag: turntable when the lock is on, free anchor otherwise.
+                    // Continue the orbit smoothly without hitting a sphere-ray limb boundary:
+                    // dual-axis uses the heading-preserving turntable; free mode uses view-space
+                    // incremental rotation along the flick direction.
                     bool inertiaOk = LockNorthUpOnDragEnabled()
-                        ? ApplyTurntableDrag(driver, inertiaGuiDelta)
-                        : KeepWorldPointUnderGui(driver, worldInertiaAnchorPoint, worldInertiaGui);
+                        ? ApplyDualAxisTurntableDrag(driver, inertiaGuiDelta)
+                        : ApplyFreeScreenDrag(driver, inertiaGuiDelta);
                     if (!inertiaOk)
                     {
                         worldPanVelocity = Vector2.zero;
@@ -255,15 +256,28 @@ namespace RimTouch
                 if (IsWorldMapActive())
                 {
                     panVelocity = Vector3.zero;
-                    worldPanVelocity = GetRecentWorldPanVelocity(now);
-
                     WorldCameraDriver worldDriver = Find.WorldCameraDriver;
-                    if (panGestureDistance < DragSlopPixels * 1.25f
-                        || worldPanVelocity.magnitude < GetWorldPanInertiaStartSpeed(worldDriver)
-                        || ShouldDisableWorldPanInertia(worldDriver))
+                    if (worldFreeLimbCoasting)
                     {
-                        worldPanVelocity = Vector2.zero;
-                        worldInertiaAnchorValid = false;
+                        float stopSpeed = GetWorldPanInertiaStopSpeed(worldDriver);
+                        if (worldPanVelocity.sqrMagnitude <= stopSpeed * stopSpeed
+                            || ShouldDisableWorldPanInertia(worldDriver))
+                        {
+                            worldPanVelocity = Vector2.zero;
+                            worldInertiaAnchorValid = false;
+                        }
+                        worldFreeLimbCoasting = false;
+                    }
+                    else
+                    {
+                        worldPanVelocity = GetRecentWorldPanVelocity(now);
+                        if (panGestureDistance < DragSlopPixels * 1.25f
+                            || worldPanVelocity.magnitude < GetWorldPanInertiaStartSpeed(worldDriver)
+                            || ShouldDisableWorldPanInertia(worldDriver))
+                        {
+                            worldPanVelocity = Vector2.zero;
+                            worldInertiaAnchorValid = false;
+                        }
                     }
                 }
                 else
@@ -297,6 +311,7 @@ namespace RimTouch
             worldInertiaAnchorValid = false;
             worldInertiaAnchorPoint = Vector3.zero;
             worldInertiaGui = Vector2.zero;
+            worldFreeLimbCoasting = false;
             zoomInertiaGui = Vector2.zero;
             zoomInertiaAnchorValid = false;
             zoomVelocity = 0f;

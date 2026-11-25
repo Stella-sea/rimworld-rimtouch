@@ -2,7 +2,7 @@
 
 A Windows touch continuation of Tatsuki Tanaka’s RimTouch. Provides touch selection, UI repair, pinch zoom, panning, world-map controls and input cleanup for RimWorld 1.7.
 
-Upstream: https://github.com/iLtanaka/RimTouch. Original author: Tatsuki Tanaka. Windows continuation by Sweet Briana and Cinder. GPL-3.0-or-later is retained for the continuation. The source snapshot is based on local commit c7bfa3adc60bc23ee5ea101f23320db934ef22b1, including main-menu cleanup guards. Metadata retains candidate wording; compilation is not certification for all touchscreens, display scaling, twist gestures, Linux or arbitrary mod lists.
+Upstream: https://github.com/iLtanaka/RimTouch. Original author: Tatsuki Tanaka. Windows continuation by Sweet Briana and Cinder. GPL-3.0-or-later is retained for the continuation. The original source snapshot was based on local commit c7bfa3adc60bc23ee5ea101f23320db934ef22b1; subsequent fixes are recorded in CHANGELOG.md. Compilation and reported hardware acceptance do not certify all touchscreens, display scaling, Linux or arbitrary mod lists.
 
 - Package ID: `cinder.rimtouch17.private`
 - Code license: GPL-3.0-or-later. See LICENSE.
@@ -10,15 +10,15 @@ Upstream: https://github.com/iLtanaka/RimTouch. Original author: Tatsuki Tanaka.
 
 ## Source release
 
-This is the selected production source and metadata snapshot, with game, Harmony and provider assemblies omitted. Original workspaces, installed mods, active lists and player saves are unchanged. This GitHub publication does not update Steam Workshop. See BUILD-STATUS.md for fresh compilation evidence and its limits.
+This repository contains the continuation source and metadata, with game, Harmony and provider assemblies omitted. GitHub publication does not update Steam Workshop. See BUILD-STATUS.md for dated compilation evidence and its limits.
 
-## Test builds
+## Current release
 
-Test builds are published as GitHub pre-releases on this fork (the Steam Workshop is not updated from GitHub):
+**0.2.0** is the stable release version for RimWorld 1.7. Download `RimTouch-v0.2.0.zip` from GitHub Releases and extract its single `RimTouch/` folder into `RimWorld/Mods/`:
 
 https://github.com/Stella-sea/rimworld-rimtouch/releases
 
-Each test build is tagged `v0.1.0-test.<N>` (a SemVer pre-release; the number continues the test1, test2, … series) and ships as `RimTouch-fix-test<N>.zip` containing a single `RimTouch/` folder — extract it straight into `RimWorld/Mods/`. Latest: **test15** (2026-11-24, `ButtonInvisibleDraggable` multi-pass tap dedup, exact HUD & window hit-testing, nested `ScrollView` priority, unified gesture lifecycle & turntable sensitivity fix). Active integration runs on `dev` and promotes to `main` via PR after tablet acceptance; see [RELEASES.md](RELEASES.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [CHANGELOG.md](CHANGELOG.md).
+This release includes the world-camera, slider, UI ownership and map-tap dispatch fixes accepted in hardware testing after test15. Active integration runs on `dev` and promotes to `main` via a merge-commit PR; stable tags are cut on `main`. GitHub releases do not update Steam Workshop. See [RELEASES.md](RELEASES.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [CHANGELOG.md](CHANGELOG.md).
 
 ## Build for 1.7
 
@@ -28,7 +28,7 @@ Use PowerShell 7 and an installed .NET SDK. Supply your licensed game and matchi
 ./Build17.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmony.dll'
 ```
 
-The portable helper compiles only Source/ into .build/1.7, without downloading dependencies, starting a game, copying a runtime or changing installed mods. Archived IDE project files may retain legacy references; the 1.7 helper is the supported build path for this snapshot. Legacy source, where included, is separate and has not been newly tested. Assets have separate terms in ASSETS.md.
+The portable helper compiles Source/ into .build/1.7 and refreshes one complete local test mod at `.build/local/RimTouch/` (DLL, About, Languages, license and credits files). Copy that folder to test; each successful build replaces its contents, while a failed compilation leaves the previous test mod intact. Local testing does not generate ZIPs or versioned test folders. The helper does not download dependencies, start the game, copy a runtime or change installed mods. Archived IDE project files may retain legacy references; the 1.7 helper is the supported build path for this snapshot. Legacy source, where included, is separate and has not been newly tested. Assets have separate terms in ASSETS.md.
 
 ## Optional input diagnostics
 

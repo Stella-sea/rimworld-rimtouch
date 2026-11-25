@@ -13,11 +13,58 @@ namespace RimTouch
     internal enum ScrollDecision
     {
         Disabled, NotScrollable, Inertia, BlockedContacts, Ended, OtherFinger,
-        Active, OtherRect, OtherWindow, Claimed, Outside, BelowSlop
+        Active, OtherRect, OtherWindow, Claimed, Outside, BelowSlop, ControlLocked
+    }
+
+    internal enum UiControlDragAxis
+    {
+        None, Horizontal, Vertical
+    }
+
+    internal enum UiSliderArbitrationState
+    {
+        None, Pending, Committed
+    }
+
+    internal enum UiSliderKind
+    {
+        None, WidgetsHorizontal, WidgetsRange, GuiSlider
+    }
+
+    public struct SliderTouchState
+    {
+        internal bool Active;
+        internal bool RestoreValue;
+        internal bool CapturedKnown;
+        internal int BeforeDragId;
+        internal int ExplicitId;
+        internal UiSliderKind Kind;
+        internal UiControlDragAxis Axis;
+        internal Rect HitRect;
+        internal Window Window;
+    }
+
+    public struct FloatRangeTouchState
+    {
+        internal SliderTouchState Slider;
+        internal FloatRange OriginalValue;
+    }
+
+    public struct IntRangeTouchState
+    {
+        internal SliderTouchState Slider;
+        internal IntRange OriginalValue;
+    }
+
+    public struct GuiSliderTouchState
+    {
+        internal SliderTouchState Slider;
+        internal float OriginalValue;
     }
 
     public static partial class TouchInputDriver
     {
+        private const float DiagonalCommitDistancePixels = MovementDetectionSlopPixels * 2f;
         private static readonly VelocityHistory UiScrollVelocityHistory = new VelocityHistory(5, 0.12f);
         private static Window uiTouchStartWindow;
         private static Vector2 uiTouchStartWindowPosition;
@@ -32,8 +79,18 @@ namespace RimTouch
         private static Vector2 uiScrollCandidatePosition;
         private static bool uiScrollCandidateDeferred;
         private static float uiScrollCandidateDeferredArea;
+        private static UiSliderArbitrationState uiSliderState;
+        private static UiControlDragAxis uiSliderAxis;
+        private static Window uiSliderWindow;
+        private static UiSliderKind uiSliderCapturedKind;
+        private static int uiSliderCapturedId;
         private static readonly FieldInfo DraggingWindowIdField = ReflectionGuard.Field(typeof(GUI), "_draggingWindowId", false);
         private static readonly FieldInfo CurrentWindowIdField = ReflectionGuard.Field(typeof(GUI), "_currentWindowId", false);
+        private static readonly FieldInfo WidgetsSliderDraggingIdField = ReflectionGuard.Field(typeof(Widgets), "sliderDraggingID", false);
+        private static readonly FieldInfo WidgetsRangeDraggingIdField = ReflectionGuard.Field(typeof(Widgets), "draggingId", false);
+        private static readonly FieldInfo WidgetsRangeCurDragEndField = ReflectionGuard.Field(typeof(Widgets), "curDragEnd", false);
+        private static readonly FieldInfo GuiSliderDragIdField = ReflectionGuard.Field(typeof(GUI), "_guiSliderDragId", false);
+        private static readonly MethodInfo WidgetsResetSliderDraggingIdsMethod = ReflectionGuard.Method(typeof(Widgets), "ResetSliderDraggingIDs", false);
 
         public static bool ShouldAllowWindowDrag()
         {
@@ -55,15 +112,359 @@ namespace RimTouch
             return false;
         }
 
+        private static void ResetUiSliderArbitration()
+        {
+            uiSliderState = UiSliderArbitrationState.None;
+            uiSliderAxis = UiControlDragAxis.None;
+            uiSliderWindow = null;
+            uiSliderCapturedKind = UiSliderKind.None;
+            uiSliderCapturedId = 0;
+        }
+
+        private static void ClearActiveSliderDrags()
+        {
+            if (!ReflectionGuard.TryInvoke(WidgetsResetSliderDraggingIdsMethod, null, null))
+            {
+                ReflectionGuard.TrySetField(WidgetsSliderDraggingIdField, null, 0);
+                ReflectionGuard.TrySetField(WidgetsRangeDraggingIdField, null, 0);
+                if (WidgetsRangeCurDragEndField != null && WidgetsRangeCurDragEndField.FieldType.IsEnum)
+                {
+                    ReflectionGuard.TrySetField(WidgetsRangeCurDragEndField, null, Enum.ToObject(WidgetsRangeCurDragEndField.FieldType, 0));
+                }
+            }
+            int guiDragId;
+            if (ReflectionGuard.TryGetField(GuiSliderDragIdField, null, out guiDragId) && guiDragId != 0)
+            {
+                ReflectionGuard.TrySetField(GuiSliderDragIdField, null, 0);
+            }
+        }
+
+        private static bool TryReadSliderDragId(UiSliderKind kind, out int id)
+        {
+            id = 0;
+            switch (kind)
+            {
+                case UiSliderKind.WidgetsHorizontal:
+                    return ReflectionGuard.TryGetField(WidgetsSliderDraggingIdField, null, out id);
+                case UiSliderKind.WidgetsRange:
+                    return ReflectionGuard.TryGetField(WidgetsRangeDraggingIdField, null, out id);
+                case UiSliderKind.GuiSlider:
+                    return ReflectionGuard.TryGetField(GuiSliderDragIdField, null, out id);
+                default:
+                    return false;
+            }
+        }
+
+        private static Rect AdjustHorizontalSliderRect(Rect rect, bool middleAlignment, string label)
+        {
+            if (middleAlignment || !string.IsNullOrEmpty(label))
+            {
+                rect.y += Mathf.Round((rect.height - 10f) / 2f);
+            }
+            if (!string.IsNullOrEmpty(label))
+            {
+                rect.y += 5f;
+            }
+            return rect;
+        }
+
+        private static bool IsTouchStartOverControlRect(Rect rect)
+        {
+            try
+            {
+                return rect.Contains(ScrollStartLocal());
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsSliderAxisDrag(UiControlDragAxis axis, Vector2 dragFromStart)
+        {
+            float absX = Mathf.Abs(dragFromStart.x);
+            float absY = Mathf.Abs(dragFromStart.y);
+            bool pastCommit = dragFromStart.sqrMagnitude > DiagonalCommitDistancePixels * DiagonalCommitDistancePixels;
+            if (axis == UiControlDragAxis.Horizontal)
+            {
+                return (absX > MovementDetectionSlopPixels && absX > absY * 1.5f)
+                    || (pastCommit && absX >= absY);
+            }
+            if (axis == UiControlDragAxis.Vertical)
+            {
+                return (absY > MovementDetectionSlopPixels && absY > absX * 1.5f)
+                    || (pastCommit && absY >= absX);
+            }
+            return false;
+        }
+
+        private static bool TryCommitSliderFromCurrentTouch(UiControlDragAxis axis, UiSliderKind kind,
+            int controlId, ScrollProofEvent inputEvent)
+        {
+            if (uiScrollGestureActive || TouchSource.Count != 1)
+            {
+                return false;
+            }
+            Vector2 drag;
+            try
+            {
+                drag = TouchToGui(TouchSource.GetTouch(0).position) - startGui;
+            }
+            catch
+            {
+                return false;
+            }
+            if (!IsSliderAxisDrag(axis, drag))
+            {
+                return false;
+            }
+            uiSliderState = UiSliderArbitrationState.Committed;
+            uiSliderAxis = axis;
+            uiSliderWindow = uiScrollCandidateWindow;
+            uiSliderCapturedKind = kind;
+            uiSliderCapturedId = controlId;
+            RecordSliderArbitration("committed", kind, controlId, axis, drag, inputEvent);
+            return true;
+        }
+
+        private static bool BeginSliderTouchCore(UiSliderKind kind, UiControlDragAxis axis, Rect hitRect,
+            int explicitId, bool guardImmediateWrite, out SliderTouchState state)
+        {
+            state = default(SliderTouchState);
+            Event current = Event.current;
+            if (!TouchModeEnabled || current == null || TouchSource.Count != 1
+                || uiScrollCandidateWindow == null || Find.WindowStack == null)
+            {
+                return false;
+            }
+            Window drawn = Find.WindowStack.currentlyDrawnWindow;
+            if (drawn == null || drawn != uiScrollCandidateWindow)
+            {
+                return false;
+            }
+
+            state.Active = true;
+            state.Kind = kind;
+            state.Axis = axis;
+            state.HitRect = hitRect;
+            state.ExplicitId = explicitId;
+            state.Window = drawn;
+            state.CapturedKnown = TryReadSliderDragId(kind, out state.BeforeDragId);
+
+            if (uiScrollGestureActive)
+            {
+                ClearActiveSliderDrags();
+                if (current.type == EventType.MouseDrag || current.type == EventType.MouseDown)
+                {
+                    current.Use();
+                }
+                state.RestoreValue = guardImmediateWrite;
+                return true;
+            }
+
+            if (uiSliderState == UiSliderArbitrationState.Committed && uiSliderWindow == drawn)
+            {
+                return true;
+            }
+
+            bool isTrackedSlider = false;
+            if (uiSliderState == UiSliderArbitrationState.Pending && uiSliderWindow == drawn
+                && uiSliderCapturedKind == kind)
+            {
+                if (explicitId != 0)
+                {
+                    isTrackedSlider = uiSliderCapturedId == explicitId;
+                }
+                else if (state.CapturedKnown && uiSliderCapturedId != 0)
+                {
+                    isTrackedSlider = state.BeforeDragId == uiSliderCapturedId;
+                }
+                else
+                {
+                    isTrackedSlider = IsTouchStartOverControlRect(hitRect);
+                }
+            }
+            else if (uiSliderState == UiSliderArbitrationState.None)
+            {
+                bool alreadyCapturedHere = state.CapturedKnown && state.BeforeDragId != 0
+                    && (explicitId == 0 || state.BeforeDragId == explicitId);
+                if (alreadyCapturedHere || (current.type == EventType.MouseDrag && IsTouchStartOverControlRect(hitRect)))
+                {
+                    int capturedId = explicitId != 0 ? explicitId : (state.CapturedKnown ? state.BeforeDragId : 0);
+                    uiSliderState = UiSliderArbitrationState.Pending;
+                    uiSliderAxis = axis;
+                    uiSliderWindow = drawn;
+                    uiSliderCapturedKind = kind;
+                    uiSliderCapturedId = capturedId;
+                    isTrackedSlider = true;
+                }
+            }
+
+            ScrollProofEvent inputEvent = TouchInputProof.IsRecording ? CaptureScrollProofEvent() : default(ScrollProofEvent);
+            if (isTrackedSlider && (current.type == EventType.MouseDrag || guardImmediateWrite))
+            {
+                int idForCommit = explicitId != 0 ? explicitId : uiSliderCapturedId;
+                if (TryCommitSliderFromCurrentTouch(axis, kind, idForCommit, inputEvent))
+                {
+                    return true;
+                }
+            }
+
+            if (current.type == EventType.MouseDrag)
+            {
+                if (isTrackedSlider)
+                {
+                    // Freeze only the tracked slider's undecided drags so an earlier
+                    // unrelated slider in the same window never eats this slider's
+                    // MouseDrag event before it can commit.
+                    current.Use();
+                    state.RestoreValue = guardImmediateWrite;
+                }
+            }
+            else if (guardImmediateWrite)
+            {
+                // FloatRange, IntRange, and Waylith GUI sliders mutate values on
+                // MouseDown or on every Layout/Repaint pass while the button is held.
+                // Allow native capture on MouseDown, then restore the value in Postfix
+                // until this gesture commits to the slider.
+                if (isTrackedSlider || (current.type == EventType.MouseDown && IsTouchStartOverControlRect(hitRect)))
+                {
+                    state.RestoreValue = true;
+                }
+            }
+
+            return true;
+        }
+
+        private static void EndSliderTouchCore(ref SliderTouchState state)
+        {
+            if (!state.Active || uiScrollGestureActive || uiSliderState == UiSliderArbitrationState.Committed)
+            {
+                return;
+            }
+
+            int afterDragId;
+            bool capturedNow = false;
+            int capturedId = state.ExplicitId;
+            if (TryReadSliderDragId(state.Kind, out afterDragId))
+            {
+                if (state.ExplicitId != 0)
+                {
+                    capturedNow = afterDragId == state.ExplicitId && state.BeforeDragId != state.ExplicitId;
+                }
+                else
+                {
+                    capturedNow = afterDragId != 0 && afterDragId != state.BeforeDragId;
+                    capturedId = afterDragId;
+                }
+            }
+            else if (!state.CapturedKnown && uiSliderState == UiSliderArbitrationState.None
+                && IsTouchStartOverControlRect(state.HitRect))
+            {
+                capturedNow = true;
+                capturedId = state.ExplicitId;
+            }
+
+            if (capturedNow)
+            {
+                uiSliderState = UiSliderArbitrationState.Pending;
+                uiSliderAxis = state.Axis;
+                uiSliderWindow = state.Window;
+                uiSliderCapturedKind = state.Kind;
+                uiSliderCapturedId = capturedId;
+                if (state.Kind != UiSliderKind.WidgetsHorizontal)
+                {
+                    state.RestoreValue = true;
+                }
+                if (TouchInputProof.IsRecording)
+                {
+                    Vector2 drag = Vector2.zero;
+                    try { if (TouchSource.Count > 0) drag = TouchToGui(TouchSource.GetTouch(0).position) - startGui; } catch { }
+                    RecordSliderArbitration("pending", state.Kind, capturedId, state.Axis, drag, CaptureScrollProofEvent());
+                }
+            }
+        }
+
+        public static void BeginHorizontalSliderTouch(Rect rect, bool middleAlignment, string label,
+            out SliderTouchState state)
+        {
+            Rect hitRect = AdjustHorizontalSliderRect(rect, middleAlignment, label);
+            BeginSliderTouchCore(UiSliderKind.WidgetsHorizontal, UiControlDragAxis.Horizontal,
+                hitRect, 0, false, out state);
+        }
+
+        public static void EndHorizontalSliderTouch(SliderTouchState state)
+        {
+            EndSliderTouchCore(ref state);
+        }
+
+        public static void BeginFloatRangeTouch(Rect rect, int id, FloatRange range, out FloatRangeTouchState state)
+        {
+            state = new FloatRangeTouchState { OriginalValue = range };
+            BeginSliderTouchCore(UiSliderKind.WidgetsRange, UiControlDragAxis.Horizontal,
+                rect, id, true, out state.Slider);
+        }
+
+        public static void EndFloatRangeTouch(FloatRangeTouchState state, ref FloatRange range)
+        {
+            EndSliderTouchCore(ref state.Slider);
+            if (state.Slider.RestoreValue)
+            {
+                range = state.OriginalValue;
+            }
+        }
+
+        public static void BeginIntRangeTouch(Rect rect, int id, IntRange range, out IntRangeTouchState state)
+        {
+            state = new IntRangeTouchState { OriginalValue = range };
+            BeginSliderTouchCore(UiSliderKind.WidgetsRange, UiControlDragAxis.Horizontal,
+                rect, id, true, out state.Slider);
+        }
+
+        public static void EndIntRangeTouch(IntRangeTouchState state, ref IntRange range)
+        {
+            EndSliderTouchCore(ref state.Slider);
+            if (state.Slider.RestoreValue)
+            {
+                range = state.OriginalValue;
+            }
+        }
+
+        public static void BeginGuiSliderTouch(Rect position, float value, bool horizontal, out GuiSliderTouchState state)
+        {
+            state = new GuiSliderTouchState { OriginalValue = value };
+            BeginSliderTouchCore(UiSliderKind.GuiSlider,
+                horizontal ? UiControlDragAxis.Horizontal : UiControlDragAxis.Vertical,
+                position, 0, true, out state.Slider);
+        }
+
+        public static void EndGuiSliderTouch(GuiSliderTouchState state, ref float result)
+        {
+            EndSliderTouchCore(ref state.Slider);
+            if (state.Slider.RestoreValue)
+            {
+                result = state.OriginalValue;
+            }
+        }
+
         public static void FilterHorizontalSliderDrag()
         {
             Event current = Event.current;
             if (!TouchModeEnabled || current == null || current.type != EventType.MouseDrag
                 || TouchSource.Count != 1 || uiScrollCandidateWindow == null
                 || Find.WindowStack == null || uiScrollCandidateWindow != Find.WindowStack.currentlyDrawnWindow) return;
-            Vector2 drag = TouchToGui(TouchSource.GetTouch(0).position) - startGui;
-            if (uiScrollGestureActive || Mathf.Abs(drag.x) <= MovementDetectionSlopPixels
-                || Mathf.Abs(drag.x) <= Mathf.Abs(drag.y) * 1.5f)
+            if (uiScrollGestureActive)
+            {
+                current.Use();
+                return;
+            }
+            if (uiSliderState == UiSliderArbitrationState.Committed && uiSliderWindow == uiScrollCandidateWindow)
+            {
+                return;
+            }
+            ScrollProofEvent inputEvent = TouchInputProof.IsRecording ? CaptureScrollProofEvent() : default(ScrollProofEvent);
+            if (!TryCommitSliderFromCurrentTouch(UiControlDragAxis.Horizontal, UiSliderKind.WidgetsHorizontal,
+                uiSliderCapturedId, inputEvent))
             {
                 // While direction is undecided, draw the original slider but do
                 // not let tiny horizontal jitter change its value during a swipe.
@@ -169,17 +570,27 @@ namespace RimTouch
 
                 ObserveUiScrollCandidate(drawn, outRect, maxX, maxY, scrollPosition);
                 uiScrollCandidateWindow = drawn;
+                if (uiSliderState == UiSliderArbitrationState.Committed && uiSliderWindow == drawn)
+                {
+                    decision = ScrollDecision.ControlLocked;
+                    return false;
+                }
+
+                float effectiveMaxX = maxX;
+                float effectiveMaxY = maxY;
+                ApplyPendingSliderAxisMask(drawn, ref effectiveMaxX, ref effectiveMaxY);
+
                 // Distance alone must never steal a horizontal slider drag.
                 Vector2 dragFromStart = gui - startGui;
-                bool directionClaim = IsScrollDirectionDrag(maxX, maxY, dragFromStart);
+                bool directionClaim = IsScrollDirectionDrag(effectiveMaxX, effectiveMaxY, dragFromStart);
                 decision = ScrollDecision.BelowSlop;
                 if (!directionClaim)
                 {
                     return false;
                 }
 
-                if (!HasScrollHeadroom(maxX, maxY, scrollPosition, dragFromStart)
-                    || DeferToInnerScrollView(outRect, dragFromStart))
+                if (!HasScrollHeadroom(effectiveMaxX, effectiveMaxY, scrollPosition, dragFromStart)
+                    || DeferToInnerScrollView(drawn, outRect, dragFromStart))
                 {
                     return false;
                 }
@@ -274,12 +685,31 @@ namespace RimTouch
             }
         }
 
-        private static bool DeferToInnerScrollView(Rect outRect, Vector2 dragFromStart)
+        private static void ApplyPendingSliderAxisMask(Window drawn, ref float maxX, ref float maxY)
+        {
+            if (uiSliderState != UiSliderArbitrationState.Pending || uiSliderWindow != drawn)
+            {
+                return;
+            }
+            if (uiSliderAxis == UiControlDragAxis.Horizontal)
+            {
+                maxX = 0f;
+            }
+            else if (uiSliderAxis == UiControlDragAxis.Vertical)
+            {
+                maxY = 0f;
+            }
+        }
+
+        private static bool DeferToInnerScrollView(Window drawn, Rect outRect, Vector2 dragFromStart)
         {
             float area = outRect.width * outRect.height;
+            float candidateMaxX = uiScrollCandidateMaximum.x;
+            float candidateMaxY = uiScrollCandidateMaximum.y;
+            ApplyPendingSliderAxisMask(drawn, ref candidateMaxX, ref candidateMaxY);
             if (uiScrollCandidateArea >= area - 1f
-                || !IsScrollDirectionDrag(uiScrollCandidateMaximum.x, uiScrollCandidateMaximum.y, dragFromStart)
-                || !HasScrollHeadroom(uiScrollCandidateMaximum.x, uiScrollCandidateMaximum.y,
+                || !IsScrollDirectionDrag(candidateMaxX, candidateMaxY, dragFromStart)
+                || !HasScrollHeadroom(candidateMaxX, candidateMaxY,
                     uiScrollCandidatePosition, dragFromStart))
             {
                 return false;
@@ -351,19 +781,21 @@ namespace RimTouch
         // True when the drag from the touch start is clearly a scroll along
         // one of this view's scrollable axes, so the scroll can be claimed
         // before a slider under the finger can treat the swipe as its own drag.
-        // The drag must be mostly along a
-        // scrollable axis (dominant component at least 1.5x the other) and
-        // past the small movement slop, so a deliberate slider drag along
-        // the slider's own axis is never stolen.
+        // Between slop and 2*slop, the dominant component must exceed 1.5x the
+        // other; past 2*slop, diagonal drags resolve by the larger component
+        // (strictly disjoint from IsSliderAxisDrag's >= tie-break).
         private static bool IsScrollDirectionDrag(float maxX, float maxY, Vector2 dragFromStart)
         {
             float absX = Mathf.Abs(dragFromStart.x);
             float absY = Mathf.Abs(dragFromStart.y);
-            if (maxY > 1f && absY > MovementDetectionSlopPixels && absY > absX * 1.5f)
+            bool pastCommit = dragFromStart.sqrMagnitude > DiagonalCommitDistancePixels * DiagonalCommitDistancePixels;
+            if (maxY > 1f && ((absY > MovementDetectionSlopPixels && absY > absX * 1.5f)
+                || (pastCommit && absY > absX)))
             {
                 return true;
             }
-            if (maxX > 1f && absX > MovementDetectionSlopPixels && absX > absY * 1.5f)
+            if (maxX > 1f && ((absX > MovementDetectionSlopPixels && absX > absY * 1.5f)
+                || (pastCommit && absX > absY)))
             {
                 return true;
             }
@@ -372,7 +804,18 @@ namespace RimTouch
 
         private static void ClaimTouchForUiScroll()
         {
-            startedOverUi = true;
+            if (uiSliderState != UiSliderArbitrationState.None && TouchInputProof.IsRecording)
+            {
+                Vector2 drag = Vector2.zero;
+                try { if (TouchSource.Count > 0) drag = TouchToGui(TouchSource.GetTouch(0).position) - startGui; } catch { }
+                RecordSliderArbitration("clearedByScroll", uiSliderCapturedKind, uiSliderCapturedId,
+                    uiSliderAxis, drag, CaptureScrollProofEvent());
+            }
+            ResetUiSliderArbitration();
+            ClearActiveSliderDrags();
+
+            gestureOwner = TouchOwner.Ui;
+            startedOverBlockingUi = true;
             suppressReleaseTap = true;
 
             if (mode == TouchMode.SelectionHold)

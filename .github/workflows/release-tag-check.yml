@@ -66,9 +66,13 @@ jobs:
               if ($LASTEXITCODE -ne 0) {
                   throw "Stable tag '$tag' must point to a commit on origin/main."
               }
+              $displayMeta = "$($about.ModMetaData.name) $($about.ModMetaData.description)"
+              if ($displayMeta -match '(?i)\b(candidate|private)\b|acceptance remains in progress') {
+                  throw "Stable tag '$tag' still contains candidate/private wording in English display metadata."
+              }
               if (Test-Path -LiteralPath 'Languages/ChineseSimplified/About/About.xml') {
                   $zhAbout = Get-Content -LiteralPath 'Languages/ChineseSimplified/About/About.xml' -Raw
-                  if ($zhAbout -match '测试版') {
+                  if ($zhAbout -match '测试版|候选版|实机验收中') {
                       throw "Stable tag '$tag' still contains test-only marker in Languages/ChineseSimplified/About/About.xml."
                   }
               }
@@ -84,8 +88,11 @@ jobs:
               @('./scripts/check-csharp-syntax.ps1'),
               @('./scripts/test-input-proof.ps1'),
               @('./scripts/test-ui-touch.ps1'),
+              @('./scripts/test-ui-touch.ps1', '-VerifyRegression'),
               @('./scripts/test-settings-layout.ps1'),
-              @('./scripts/test-settings-layout.ps1', '-VerifyRegression')
+              @('./scripts/test-settings-layout.ps1', '-VerifyRegression'),
+              @('./scripts/test-world-touch.ps1'),
+              @('./scripts/test-world-touch.ps1', '-VerifyRegression')
           )
           foreach ($argsList in $suites) {
               & pwsh -NoProfile -File @argsList

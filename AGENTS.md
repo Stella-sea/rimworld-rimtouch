@@ -32,6 +32,7 @@ pwsh -File ./Build17.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmo
 - `GameDir` 应直接包含 `Version.txt`、`Assembly-CSharp.dll` 及所需游戏 DLL；脚本要求版本号以 `1.7.` 开头。
 - 脚本选择已安装 SDK 中的 Roslyn，递归编译 `Source/` 下的 C# 文件，排除 `bin/` 和 `obj/`；程序集名称由 `Build.json` 决定。
 - 输出为 `.build/1.7/RimTouch.dll` 和 `.build/1.7/Build-Receipt.json`。收据记录依赖与源文件哈希、诊断和构建结果。
+- 本地测试只维护 `.build/local/RimTouch/` 这一份完整 Mod；`Build17.ps1` 每次编译成功后原地刷新 DLL、About、Languages 和许可说明，编译失败则保留上一份可用 Mod。用户直接复制替换此目录，不额外生成测试 ZIP、按任务命名的目录或旧版本备份；先前“保留五份”约定已取消。仅在明确发版任务中运行发布 ZIP 打包脚本。
 - 构建前至少需要 1.5 GB 可用空间。构建脚本不下载依赖、不启动游戏，也不改动已安装模组。
 - `Source/RimTouch.csproj` 是精简的旧式项目文件，不是本快照支持的构建入口；不要默认使用 `dotnet build` 或 `dotnet test`。
 - 游戏或 Harmony 路径未知时向用户确认，不猜测安装位置，也不提交个人机器路径或专有程序集。
@@ -45,7 +46,11 @@ pwsh -File ./Build17.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmo
 - 保持焦点丢失、窗口几何变化、触控取消和返回主菜单时的清理行为，避免残留触点或惯性。
 - 明确区分 Windows 客户区归一化坐标、底部为原点的 framebuffer 像素和 GUI/UI 缩放坐标。
 - UI 命中统一到当前局部坐标，只用同坐标触摸起点决定滚动资格；禁止以全局触点或停留鼠标与局部矩形取 OR 兜底。Waylith 的 GUI 绝对偏移与缩放行为须通过事件锚点/差分验证，不能仅凭函数名推定单位。触控滚动及惯性绑定绘制窗口，边缘新起手仍走原版窗口拖动。
+- UI 穿透修复须检查共用派发顺序、控件接管与地图提交归属；不要以持续枚举按钮、页面或模组矩形作为通用修复。方案须验证未加页面特例的标准模组控件，并明确完全自绘、直接轮询输入控件的兼容边界；不得仅凭 `Event.Use()` 或 `hotControl` 假定所有控件都会报告接管。
+- 地图短点按由 `TouchInputDriver.UiTap.cs` 在 Entry/Play UI 派发及对应物理释放均完成后提交；保留手势序号、触点与鼠标边沿关联，不以等待固定帧数自动放行。新增 UI 操作入口须复用事件消费或实际控件触发的撤销通知；不能恢复未取得对应 UI 派发结果就在 Update 中直接选点。诊断区分起手 owner 与 `mapTapDecision` 的实际提交结果。拖动/长按/双指的共用控件起手认领另有后续待办，不宣称本轮已经覆盖。
+- 窗口本体之外的 Inspect 标签共用原生可见标签布局判定，并遵循 `WindowStack.GetsInput(null)` 的模态规则。单指手势归属在起手确定，地图抑制不得按当前位置反复改判；升为双指时保留窗口/滚动归属，只对新触点做窗口命中，普通非窗口 HUD 继续保留双指入口。本地工具与 `WorldTargeter` 分开归属；`TilePicker` 的确认界面仍依赖世界地块选择。不要以全局控件矩形缓存或无证据的跨帧点按队列替代这些规则。
 - 游戏内部成员访问优先沿用 `ReflectionGuard` 的检查、失败回退和去重日志模式。修改 Harmony 目标或 IL 匹配时保留版本不匹配时的安全退路。
+- 世界地图按“静止球体、移动相机”推导：`sphereRotation` 是世界到视图旋转，相机姿态为其逆；世界抓点纠正右乘，视图扭转左乘，禁止混用世界/视图向量。双轴单指、中点平移及惯性共用增量求解器，保持当前滚转并按屏幕方向映射；球外空白可拖动，但阈值内点按仍取消选择，拖回起点抬手不得误点。数学回归必须投影静止世界地物，不能用转球模型替代。
 - 扩展缩放通过 `ZoomRangeLease` 管理所有权，避免恢复时覆盖其他模组的修改。额外 UI 缩放是显式启用选项，保留原生安全选择和重置入口。
 - 设置键及默认值涉及已有用户配置；变更时检查 `RimTouchSettings.ExposeData()` 和设置版本迁移。不要在每次 GUI 绘制时写入设置。
 - 诊断保持显式启用且有界。用户要求不依赖启动参数增加测试负担：优先设置页临时勾选、直接复制原生 Debug log，不持久化开关、不要求重启或另找文件。每轮最多 1024 条，停止/耗尽后可重新勾选；旧启动参数仅保留兼容。不要默认开启或提交玩家日志。记录滚动命中时须保留处理前的事件类型与鼠标位置，因为核心可能消费 MouseDrag 将事件改为 Used。
@@ -69,7 +74,7 @@ pwsh -File ./Build17.ps1 -GameDir 'PATH/TO/RIMWORLD' -HarmonyDll 'PATH/TO/0Harmo
 - **分支职责**：`main` 为受保护的稳定主干（仅接收实机验收通过的变更）；`dev` 为日常集成与预发布分支；具体功能/修复从 `dev` 切出短生命周期分支（`feat/*`、`fix/*`、`refactor/*`、`docs/*`、`ci/*`）。
 - **PR 与合并策略**：短分支合入 `dev` 采用 **Squash and merge** 保持线性整洁；`dev` 验收后同步至 `main` **必须采用 Create a merge commit**（严禁 Squash），保证 `dev` 与 `main` 共享提交历史与标签祖先关系。
 - **双层检查流水线**：
-  - 每次提交/PR 须确保免游戏依赖检查全部通过：`scripts/check-repo-hygiene.ps1`、`scripts/check-csharp-syntax.ps1`、`scripts/test-input-proof.ps1`、`scripts/test-ui-touch.ps1`、`scripts/test-settings-layout.ps1`（与 `.github/workflows/ci.yml` 一致）。
-  - 本机具备 RimWorld 1.7 与 Harmony 依赖时，依次执行 `Build17.ps1`、`scripts/test-harmony-patches.ps1`（核验全部 `[HarmonyPatch]` 目标与参数名绑定）及 `scripts/package-release.ps1`。
-- **标签与发版**：预发布标签格式为附注标签 `v0.1.0-test.<N>`（与 `About/About.xml` `<modVersion>` 及 `CHANGELOG.md` 严格一致，由 `release-tag-check.yml` 校验并受 GitHub Ruleset 不可变保护）；正式版 `v0.1.0` 打在 `main` 上且须先移除中文 `About.xml` 的“测试版”标记。玩家日志（如 `TestReports/`）保持 Git 忽略，严禁入库。
+  - 每次提交/PR 须确保免游戏依赖检查全部通过：`scripts/check-repo-hygiene.ps1`、`scripts/check-csharp-syntax.ps1`、`scripts/test-input-proof.ps1`、`scripts/test-ui-touch.ps1`、`scripts/test-settings-layout.ps1`、`scripts/test-world-touch.ps1`（UI、设置布局和世界测试同时执行 `-VerifyRegression`，与 `.github/workflows/ci.yml` 一致）。
+  - 本机具备 RimWorld 1.7 与 Harmony 依赖时，依次执行 `Build17.ps1`、`scripts/test-harmony-patches.ps1`（核验全部 `[HarmonyPatch]` 目标与参数名绑定）；本地测试交付使用自动刷新的 `.build/local/RimTouch/`，仅明确发版时再执行 `scripts/package-release.ps1`。
+- **标签与发版**：预发布附注标签 `v<MAJOR>.<MINOR>.<PATCH>-test.<N>` 打在 `dev`；正式版附注标签 `v<MAJOR>.<MINOR>.<PATCH>` 打在 `main`。版本须与 `About/About.xml` `<modVersion>` 及 `CHANGELOG.md` 严格一致，由 `release-tag-check.yml` 校验并受 GitHub Ruleset 不可变保护。正式版先移除中英文显示文案中的测试版/Candidate/Private/实机验收中标记，保留包 ID 的历史后缀；包内必须包含 `LICENSE`、`ASSETS.md`、`CREDITS.md`。玩家日志（如 `TestReports/`）保持 Git 忽略，严禁入库。
 

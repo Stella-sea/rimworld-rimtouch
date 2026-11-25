@@ -15,7 +15,8 @@ namespace RimTouch
         private static bool IsBlockingWindowAt(Vector2 gui)
         {
             WindowStack stack = Find.WindowStack;
-            if (stack != null && stack.GetWindowAt(gui) != null)
+            if (stack != null && (!stack.GetsInput(null)
+                || stack.GetWindowAt(gui) != null || IsInspectTabAt(stack, gui)))
             {
                 return true;
             }
@@ -28,8 +29,7 @@ namespace RimTouch
 
         private static bool IsLikelyUiPosition(Vector2 gui)
         {
-            WindowStack stack = Find.WindowStack;
-            if (stack != null && stack.GetWindowAt(gui) != null)
+            if (IsBlockingWindowAt(gui))
             {
                 return true;
             }
@@ -101,6 +101,50 @@ namespace RimTouch
             return false;
         }
 
+        private static bool IsInspectTabAt(WindowStack stack, Vector2 gui)
+        {
+            // 1.7 draws these shared labels in ExtraOnGUI, above windowRect.
+            IList<Window> windows = stack.Windows;
+            for (int i = windows.Count - 1; i >= 0; i--)
+            {
+                IInspectPane pane = windows[i] as IInspectPane;
+                if (pane == null || !pane.AnythingSelected
+                    || gui.y < pane.PaneTopY - 30f || gui.y >= pane.PaneTopY)
+                {
+                    continue;
+                }
+
+                IEnumerable<InspectTabBase> tabs = pane.CurTabs;
+                if (tabs == null) continue;
+                float x = InspectPaneUtility.PaneWidthFor(pane) - 72f;
+                foreach (InspectTabBase tab in tabs)
+                {
+                    if (!tab.IsVisible || tab.Hidden) continue;
+                    if (new Rect(x, pane.PaneTopY - 30f, 72f, 30f).Contains(gui))
+                    {
+                        return true;
+                    }
+                    x -= 72f;
+                }
+            }
+            return false;
+        }
+
+        private static TouchOwner GetTouchOwner(Vector2 gui)
+        {
+            if (IsLikelyUiPosition(gui)) return TouchOwner.Ui;
+            if (IsWorldMapActive())
+            {
+                return IsWorldMapToolActive() ? TouchOwner.WorldMapTool : TouchOwner.WorldMap;
+            }
+            return IsVanillaMapToolActive() ? TouchOwner.LocalMapTool : TouchOwner.LocalMap;
+        }
+
+        private static bool IsWorldMapToolActive()
+        {
+            return IsWorldMapActive() && Find.WorldTargeter != null && Find.WorldTargeter.IsTargeting;
+        }
+
         private static bool IsVanillaMapToolActive()
         {
             // Find.DesignatorManager / Find.Targeter go through Find.MapUI,
@@ -139,9 +183,7 @@ namespace RimTouch
                     return false;
                 }
 
-                ContactTouch touch = TouchSource.GetTouch(0);
-                Vector2 gui = TouchToGui(touch.position);
-                return !IsLikelyUiPosition(gui);
+                return gestureOwner == TouchOwner.LocalMap;
             }
             catch
             {
