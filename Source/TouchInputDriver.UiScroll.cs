@@ -814,7 +814,8 @@ namespace RimTouch
             ResetUiSliderArbitration();
             ClearActiveSliderDrags();
 
-            startedOverUi = true;
+            gestureOwner = TouchOwner.Ui;
+            startedOverBlockingUi = true;
             suppressReleaseTap = true;
 
             if (mode == TouchMode.SelectionHold)

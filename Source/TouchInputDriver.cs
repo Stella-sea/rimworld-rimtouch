@@ -76,7 +76,9 @@ namespace RimTouch
         private static Vector3 panAnchorMap;
         private static Vector3 twoFingerPanAnchorMap;
         private static float startTime;
-        private static bool startedOverUi;
+        private static TouchOwner gestureOwner;
+        private static bool startedOverUi { get { return gestureOwner == TouchOwner.Ui; } }
+        private static bool startedOverBlockingUi;
         private static bool rightClickDone;
         private static float lastWorldTapTime = -100f;
         private static Vector2 lastWorldTapGui = Vector2.zero;
@@ -279,21 +281,17 @@ namespace RimTouch
                     return true;
                 }
 
-                if (TouchSource.Count > 0 && Find.CurrentMap != null && !IsVanillaMapToolActive())
+                if (TouchSource.Count > 0)
                 {
-                    Vector2 gui = TouchToGui(TouchSource.GetTouch(0).position);
-                    if (!IsLikelyUiPosition(gui))
-                    {
-                        return true;
-                    }
+                    return gestureOwner != TouchOwner.LocalMapTool;
                 }
 
-                if (!startedOverUi && Time.frameCount - lastTouchFrame <= 45 && !IsVanillaMapToolActive())
+                if (gestureOwner == TouchOwner.LocalMap && Time.frameCount - lastTouchFrame <= 45)
                 {
                     return true;
                 }
 
-                if (suppressVanillaMapUntilMouseMoves && !IsVanillaMapToolActive())
+                if (suppressVanillaMapUntilMouseMoves && gestureOwner == TouchOwner.LocalMap && !IsVanillaMapToolActive())
                 {
                     return true;
                 }
@@ -320,7 +318,22 @@ namespace RimTouch
 
                 return mode == TouchMode.TwoFinger
                     || ignoreTouchesUntilAllReleased
-                    || Time.frameCount - lastMultiTouchFrame <= 30;
+                    || Time.frameCount - lastMultiTouchFrame <= 30
+                    || (TouchSource.Count > 0 && gestureOwner != TouchOwner.LocalMapTool
+                        && Event.current != null && Event.current.isMouse);
+            }
+        }
+
+        public static bool ShouldSuppressVanillaWorldToolInput
+        {
+            get
+            {
+                return TouchModeEnabled && IsWorldMapActive()
+                    && (TouchSource.Count >= 2 || mode == TouchMode.TwoFinger
+                        || ignoreTouchesUntilAllReleased
+                        || Time.frameCount - lastMultiTouchFrame <= 30
+                        || (TouchSource.Count > 0 && gestureOwner != TouchOwner.WorldMapTool
+                            && Event.current != null && Event.current.isMouse));
             }
         }
 
@@ -338,13 +351,13 @@ namespace RimTouch
                     return true;
                 }
 
-                if (TouchSource.Count == 1)
+                if (TouchSource.Count > 0)
                 {
-                    Vector2 gui = TouchToGui(TouchSource.GetTouch(0).position);
-                    return !IsLikelyUiPosition(gui);
+                    return true;
                 }
 
-                return Time.frameCount - lastTouchFrame <= 45 || suppressVanillaMapUntilMouseMoves;
+                return (gestureOwner == TouchOwner.WorldMap || gestureOwner == TouchOwner.WorldMapTool)
+                    && (Time.frameCount - lastTouchFrame <= 45 || suppressVanillaMapUntilMouseMoves);
             }
         }
 
@@ -539,6 +552,8 @@ namespace RimTouch
             StopUiScrollInertia();
             ClearInertiaSamples();
             ResetState();
+            gestureOwner = TouchOwner.None;
+            startedOverBlockingUi = false;
             TouchTapRepair.Clear();
             hadTouchLastFrame = false;
             ignoreTouchesUntilAllReleased = false;
@@ -578,7 +593,8 @@ namespace RimTouch
                 startMap = IsWorldMapActive() ? Vector3.zero : (Find.CurrentMap != null ? GuiToMapPosition(gui) : Vector3.zero);
                 startTime = Time.realtimeSinceStartup;
                 lastWorldPanSampleTime = startTime;
-                startedOverUi = IsLikelyUiPosition(gui);
+                gestureOwner = GetTouchOwner(gui);
+                startedOverBlockingUi = IsBlockingWindowAt(gui);
                 uiTouchStartWindow = Find.WindowStack == null ? null : Find.WindowStack.GetWindowAt(gui);
                 uiTouchStartWindowPosition = uiTouchStartWindow == null ? Vector2.zero
                     : new Vector2(uiTouchStartWindow.windowRect.x, uiTouchStartWindow.windowRect.y);
@@ -608,7 +624,9 @@ namespace RimTouch
                 {
                     SuppressUiClickFallout();
                 }
-                if (!startedOverUi && IsVanillaMapToolActive())
+                CancelRimWorldDragBox();
+                CancelWorldDragBox();
+                if (gestureOwner == TouchOwner.LocalMapTool || gestureOwner == TouchOwner.WorldMapTool)
                 {
                     mode = TouchMode.VanillaMapTool;
                     return;
@@ -825,11 +843,16 @@ namespace RimTouch
             {
                 gestureIsWorld = IsWorldMapActive();
                 gestureMap = Find.CurrentMap;
-                if (IsBlockingWindowAt(guiA) || IsBlockingWindowAt(guiB))
+                // Keep the first contact's start ownership; only hit-test a new contact.
+                bool aBlocks = (mode == TouchMode.None || a.fingerId != primaryFingerId) && IsBlockingWindowAt(guiA);
+                bool bBlocks = (mode == TouchMode.None || b.fingerId != primaryFingerId) && IsBlockingWindowAt(guiB);
+                if ((mode != TouchMode.None && startedOverBlockingUi) || uiScrollGestureActive
+                    || aBlocks || bBlocks)
                 {
                     // Two fingers starting on a control window should not move
                     // the map or globe behind that window.
-                    startedOverUi = true;
+                    gestureOwner = TouchOwner.Ui;
+                    startedOverBlockingUi = true;
                     suppressReleaseTap = true;
                     mode = TouchMode.OneFinger;
                     StopInertia();
@@ -838,6 +861,8 @@ namespace RimTouch
                     CancelWorldDragBox();
                     return;
                 }
+                gestureOwner = IsWorldMapActive() ? TouchOwner.WorldMap : TouchOwner.LocalMap;
+                startedOverBlockingUi = false;
                 mode = TouchMode.TwoFinger;
                 // A two-finger gesture takes over the rotation (twist /
                 // pinch); stop any smooth north return so it cannot fight

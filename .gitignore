@@ -12,3 +12,4 @@
 *.log
 TestReports/
 RimTouch-Input-Proof*.jsonl
+*.lnk

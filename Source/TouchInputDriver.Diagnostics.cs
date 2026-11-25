@@ -77,6 +77,7 @@ namespace RimTouch
                 {
                     kind = "touchLifecycle", session = TouchInputProof.SessionId, utc = DateTime.UtcNow, frame = Time.frameCount,
                     gesture = proofGesture, action, finger = primaryFingerId, mode = mode.ToString(),
+                    owner = gestureOwner.ToString(),
                     touchCount = TouchSource.Count, canceled = TouchSource.Canceled,
                     start = ProofPoint(startGui), last = ProofPoint(lastGui), startedOverUi,
                     scrollActive = uiScrollGestureActive, scrollRect = ProofRect(uiScrollActiveRect),
